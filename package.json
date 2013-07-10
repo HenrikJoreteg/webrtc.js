@@ -1,0 +1,22 @@
+{
+  "name": "webrtc",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git", 
+    "url": "git@github.com:henrikjoreteg/webrtc.js.git"
+  },
+  "main": "./webrtc.js",
+  "description": "WebRTC abstraction for managing it simple to manage multiple peer connections of various types.",
+  "dependencies": {
+    "webrtcsupport": "0.3.2",
+    "wildemitter": "0.0.5",
+    "rtcpeerconnection": "0.2.0",
+    "getusermedia": "0.1.0",
+    "getscreenmedia": "0.1.0",
+    "attachmediastream": "0.1.0",
+    "hark": "0.1.1"
+  },
+  "devDependencies": {
+    "browserify": "2.22.0"
+  }
+}
