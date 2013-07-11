@@ -112,13 +112,11 @@ WebRTC.prototype.unmute = function () {
 
 // Audio monitor
 WebRTC.prototype.setupAudioMonitor = function (stream) {
-    // disable for now:
-    //return;
-
     log('Setup audio');
-    var audio = hark(stream),
-        self = this,
-        timeout;
+    var audio = hark(stream);
+    var self = this;
+    var timeout;
+
     audio.on('speaking', function() {
         if (self.hardMuted) return;
         self.setMicVolume(1);
@@ -279,14 +277,16 @@ Peer.prototype.handleMessage = function (message) {
 };
 
 Peer.prototype.send = function (messageType, payload) {
-    log('sending', messageType, payload);
-    this.parent.emit('message', {
+    var message = {
         to: this.id,
         broadcaster: this.broadcaster,
         roomType: this.type,
         type: messageType,
-        payload: payload
-    });
+        payload: payload,
+        prefix: webrtc.prefix
+    };
+    log('sending', messageType, message);
+    this.parent.emit('message', message);
 };
 
 Peer.prototype.onIceCandidate = function (candidate) {
