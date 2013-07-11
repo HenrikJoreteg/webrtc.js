@@ -220,6 +220,7 @@ function Peer(options) {
     this.type = options.type || 'video';
     this.oneway = options.oneway || false;
     this.sharemyscreen = options.sharemyscreen || false;
+    this.browserPrefix = options.prefix;
     this.stream = options.stream;
     // Create an RTCPeerConnection via the polyfill
     this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionContraints);
@@ -256,7 +257,9 @@ Peer.prototype = Object.create(WildEmitter.prototype, {
 Peer.prototype.handleMessage = function (message) {
     var self = this;
 
-    log('getting', message.type, message.payload);
+    log('getting', message.type, message);
+
+    if (message.prefix) this.browserPrefix = message.prefix;
 
     if (message.type === 'offer') {
         this.pc.answer(message.payload, function (err, sessionDesc) {
@@ -321,34 +324,7 @@ Peer.prototype.handleStreamRemoved = function () {
 
 module.exports = WebRTC;
 
-},{"getusermedia":3,"hark":6,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
-// created by @HenrikJoreteg
-var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
-var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
-var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
-var prefix = function () {
-    if (window.mozRTCPeerConnection) {
-        return 'moz';
-    } else if (window.webkitRTCPeerConnection) {
-        return 'webkit';
-    }
-}();
-var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
-var webAudio = !!window.webkitAudioContext;
-
-// export support flags and constructors.prototype && PC
-module.exports = {
-    support: !!PC,
-    dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
-    prefix: prefix,
-    webAudio: webAudio,
-    screenSharing: screenSharing,
-    PeerConnection: PC,
-    SessionDescription: SessionDescription,
-    IceCandidate: IceCandidate
-};
-
-},{}],3:[function(require,module,exports){
+},{"getusermedia":2,"hark":6,"rtcpeerconnection":4,"webrtcsupport":3,"wildemitter":5}],2:[function(require,module,exports){
 // getUserMedia helper by @HenrikJoreteg
 var func = (navigator.getUserMedia ||
             navigator.webkitGetUserMedia ||
@@ -375,6 +351,33 @@ module.exports = function (contstraints, cb) {
     }, function (err) {
         cb(err);
     });
+};
+
+},{}],3:[function(require,module,exports){
+// created by @HenrikJoreteg
+var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
+var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
+var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
+var prefix = function () {
+    if (window.mozRTCPeerConnection) {
+        return 'moz';
+    } else if (window.webkitRTCPeerConnection) {
+        return 'webkit';
+    }
+}();
+var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
+var webAudio = !!window.webkitAudioContext;
+
+// export support flags and constructors.prototype && PC
+module.exports = {
+    support: !!PC,
+    dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
+    prefix: prefix,
+    webAudio: webAudio,
+    screenSharing: screenSharing,
+    PeerConnection: PC,
+    SessionDescription: SessionDescription,
+    IceCandidate: IceCandidate
 };
 
 },{}],5:[function(require,module,exports){
@@ -652,7 +655,7 @@ PeerConnection.prototype.close = function () {
 
 module.exports = PeerConnection;
 
-},{"webrtcsupport":2,"wildemitter":5}],6:[function(require,module,exports){
+},{"webrtcsupport":3,"wildemitter":5}],6:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 
 function getMaxVolume (analyser, fftBins) {

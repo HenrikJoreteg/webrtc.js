@@ -218,6 +218,7 @@ function Peer(options) {
     this.type = options.type || 'video';
     this.oneway = options.oneway || false;
     this.sharemyscreen = options.sharemyscreen || false;
+    this.browserPrefix = options.prefix;
     this.stream = options.stream;
     // Create an RTCPeerConnection via the polyfill
     this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionContraints);
@@ -254,7 +255,9 @@ Peer.prototype = Object.create(WildEmitter.prototype, {
 Peer.prototype.handleMessage = function (message) {
     var self = this;
 
-    log('getting', message.type, message.payload);
+    log('getting', message.type, message);
+
+    if (message.prefix) this.browserPrefix = message.prefix;
 
     if (message.type === 'offer') {
         this.pc.answer(message.payload, function (err, sessionDesc) {
