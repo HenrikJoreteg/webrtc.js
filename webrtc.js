@@ -86,8 +86,7 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, el) {
             self.localStream = self.setupMicVolumeControl(stream);
 
             if (el) {
-                attachMediaStream(el, stream);
-                el.muted = true;
+                attachMediaStream(stream, el, {muted: true});
             }
 
             self.emit('localStream', stream);
