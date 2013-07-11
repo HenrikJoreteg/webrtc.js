@@ -1,6 +1,5 @@
 var webrtc = require('webrtcsupport');
 var getUserMedia = require('getusermedia');
-var attachMediaStream = require('attachmediastream');
 var PeerConnection = require('rtcpeerconnection');
 var WildEmitter = require('wildemitter');
 var hark = require('hark');
@@ -72,7 +71,7 @@ WebRTC.prototype.createPeer = function (opts) {
     return peer;
 };
 
-WebRTC.prototype.startLocalMedia = function (mediaConstraints, el) {
+WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
     var self = this;
     var constraints = mediaConstraints || {video: true, audio: true};
 
@@ -85,14 +84,11 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, el) {
             }
             self.localStream = self.setupMicVolumeControl(stream);
 
-            if (el) {
-                attachMediaStream(stream, el, {muted: true});
-            }
-
-            self.emit('localStream', stream);
-
             // start out somewhat muted if we can track audio
             self.setMicVolume(0.5);
+
+            self.emit('localStream', stream);
+            if (cb) cb(stream);
         }
     });
 };

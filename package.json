@@ -1,7 +1,7 @@
 {
   "name": "webrtc",
-  "version": "0.0.3",
-  "tags": ["webrtc", "browser"],
+  "version": "0.1.0",
+  "keywords": ["webrtc", "browser"],
   "repository": {
     "type": "git", 
     "url": "git@github.com:henrikjoreteg/webrtc.js.git"
@@ -14,7 +14,6 @@
     "rtcpeerconnection": "0.2.0",
     "getusermedia": "0.1.0",
     "getscreenmedia": "0.1.0",
-    "attachmediastream": "1.0.0",
     "hark": "0.1.1"
   },
   "devDependencies": {

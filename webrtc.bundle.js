@@ -2,7 +2,6 @@
 return (function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
 var webrtc = require('webrtcsupport');
 var getUserMedia = require('getusermedia');
-var attachMediaStream = require('attachmediastream');
 var PeerConnection = require('rtcpeerconnection');
 var WildEmitter = require('wildemitter');
 var hark = require('hark');
@@ -74,7 +73,7 @@ WebRTC.prototype.createPeer = function (opts) {
     return peer;
 };
 
-WebRTC.prototype.startLocalMedia = function (mediaConstraints, el) {
+WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
     var self = this;
     var constraints = mediaConstraints || {video: true, audio: true};
 
@@ -87,14 +86,11 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, el) {
             }
             self.localStream = self.setupMicVolumeControl(stream);
 
-            if (el) {
-                attachMediaStream(stream, el, {muted: true});
-            }
-
-            self.emit('localStream', stream);
-
             // start out somewhat muted if we can track audio
             self.setMicVolume(0.5);
+
+            self.emit('localStream', stream);
+            if (cb) cb(stream);
         }
     });
 };
@@ -325,7 +321,7 @@ Peer.prototype.handleStreamRemoved = function () {
 
 module.exports = WebRTC;
 
-},{"attachmediastream":4,"getusermedia":3,"hark":7,"rtcpeerconnection":5,"webrtcsupport":2,"wildemitter":6}],2:[function(require,module,exports){
+},{"getusermedia":3,"hark":6,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
 // created by @HenrikJoreteg
 var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
 var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
@@ -381,48 +377,7 @@ module.exports = function (contstraints, cb) {
     });
 };
 
-},{}],4:[function(require,module,exports){
-module.exports = function (stream, el, options) {
-    var URL = window.URL;
-    var opts = {
-        autoplay: true,
-        mirror: false,
-        muted: false
-    };
-    var element = el || document.createElement('video');
-    var item;
-
-    if (options) {
-        for (item in options) {
-            opts[item] = options[item];
-        }
-    }
-
-    if (opts.autoplay) element.autoplay = 'autoplay';
-    if (opts.muted) element.muted = true;
-    if (opts.mirror) {
-        ['', 'moz', 'webkit', 'o', 'ms'].forEach(function (prefix) {
-            var styleName = prefix ? prefix + 'Transform' : 'transform';
-            element.style[styleName] = 'scaleX(-1)';
-        });
-    }
-
-    // this first one should work most everywhere now
-    // but we have a few fallbacks just in case.
-    if (URL && URL.createObjectURL) {
-        element.src = URL.createObjectURL(stream);
-    } else if (element.srcObject) {
-        element.srcObject = stream;
-    } else if (element.mozSrcObject) {
-        element.mozSrcObject = stream;
-    } else {
-        return false;
-    }
-
-    return element;
-};
-
-},{}],6:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based 
 on @visionmedia's Emitter from UI Kit.
@@ -559,7 +514,7 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 var webrtc = require('webrtcsupport');
 
@@ -697,7 +652,7 @@ PeerConnection.prototype.close = function () {
 
 module.exports = PeerConnection;
 
-},{"webrtcsupport":2,"wildemitter":6}],7:[function(require,module,exports){
+},{"webrtcsupport":2,"wildemitter":5}],6:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 
 function getMaxVolume (analyser, fftBins) {
@@ -790,6 +745,6 @@ module.exports = function(stream, options) {
   return harker;
 }
 
-},{"wildemitter":6}]},{},[1])(1)
+},{"wildemitter":5}]},{},[1])(1)
 });
 ;
