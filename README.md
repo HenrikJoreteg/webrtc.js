@@ -1,8 +1,10 @@
-# WebRTC - Helper for managing multiple WebRTC connections
+# webrtc.js
+ 
+A helper for creating and managing WebRTC connections in a cross-browser sort of way.
 
-This is a component of http://simplewebrtc.com which is what powers: https://talky.io
+This is used in http://simplewebrtc.com which is what powers: https://talky.io
 
-Designed for use with browserify/CommonJS on the client. 
+It's designed for use with browserify/CommonJS on the client. 
 
 If you're not using browserify or you want AMD support use `webrtc.bundle.js`.
 
@@ -15,7 +17,9 @@ npm install webrtc
 
 ## Caution
 
-This is still a work in progress.
+This is still a very much a work in progress and is currently only being used in one project (that will change soon). But until it's a bit more vetted, you've been warned.
+
+Having said that, contributions/feedback welcomed :)
 
 
 ## License
