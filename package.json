@@ -1,6 +1,6 @@
 {
   "name": "webrtc",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "keywords": ["webrtc", "browser"],
   "repository": {
     "type": "git", 
@@ -13,7 +13,6 @@
     "wildemitter": "0.0.5",
     "rtcpeerconnection": "0.2.0",
     "getusermedia": "0.2.0",
-    "getscreenmedia": "0.2.0",
     "hark": "0.1.1"
   },
   "devDependencies": {
