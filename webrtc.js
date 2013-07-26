@@ -117,6 +117,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
         if (self.hardMuted) return;
         self.setMicVolume(1);
         self.sendToAll('speaking', {});
+        self.emit('speaking');
     });
 
     audio.on('stopped_speaking', function() {
@@ -126,6 +127,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
         timeout = setTimeout(function () {
             self.setMicVolume(0.5);
             self.sendToAll('stopped_speaking', {});
+            self.emit('stoppedSpeaking');
         }, 1000);
     });
 };

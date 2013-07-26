@@ -1,6 +1,6 @@
 {
   "name": "webrtc",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "keywords": ["webrtc", "browser"],
   "repository": {
     "type": "git", 
