@@ -3,6 +3,7 @@ var getUserMedia = require('getusermedia');
 var PeerConnection = require('rtcpeerconnection');
 var WildEmitter = require('wildemitter');
 var hark = require('hark');
+var GainController = require('mediastream-gain');
 var log;
 
 
@@ -84,7 +85,9 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
             if (constraints.audio) {
                 self.setupAudioMonitor(stream);
             }
-            self.localStream = self.setupMicVolumeControl(stream);
+            self.localStream = stream;
+
+            self.gainController = new GainController(stream);
 
             // start out somewhat muted if we can track audio
             self.setMicIfEnabled(0.5);
@@ -133,37 +136,12 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     });
 };
 
-WebRTC.prototype.setupMicVolumeControl = function (stream) {
-    if (!webrtc.webAudio || !this.config.autoAdjustMic) return stream;
-
-    var context = new webkitAudioContext();
-    var microphone = context.createMediaStreamSource(stream);
-    var gainFilter = this.gainFilter = context.createGainNode();
-    var destination = context.createMediaStreamDestination();
-    var outputStream = destination.stream;
-
-    microphone.connect(gainFilter);
-    gainFilter.connect(destination);
-
-    stream.removeTrack(stream.getAudioTracks()[0]);
-    stream.addTrack(outputStream.getAudioTracks()[0]);
-
-    return stream;
-};
-
-// sets the gain input on the microphone if web audio
-// is available.
-WebRTC.prototype.setMicVolume = function (volume) {
-    if (!webrtc.webAudio) return;
-    this.gainFilter.gain.value = volume;
-};
-
 // We do this as a seperate method in order to
 // still leave the "setMicVolume" as a working
 // method.
 WebRTC.prototype.setMicIfEnabled = function (volume) {
     if (!this.config.autoAdjustMic) return;
-    this.setMicVolume(volume);
+    this.gainController.setGain(volume);
 };
 
 // Video controls

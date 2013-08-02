@@ -5,6 +5,7 @@ var getUserMedia = require('getusermedia');
 var PeerConnection = require('rtcpeerconnection');
 var WildEmitter = require('wildemitter');
 var hark = require('hark');
+var GainController = require('mediastream-gain');
 var log;
 
 
@@ -86,7 +87,9 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
             if (constraints.audio) {
                 self.setupAudioMonitor(stream);
             }
-            self.localStream = self.setupMicVolumeControl(stream);
+            self.localStream = stream;
+
+            self.gainController = new GainController(stream);
 
             // start out somewhat muted if we can track audio
             self.setMicIfEnabled(0.5);
@@ -135,37 +138,12 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     });
 };
 
-WebRTC.prototype.setupMicVolumeControl = function (stream) {
-    if (!webrtc.webAudio || !this.config.autoAdjustMic) return stream;
-
-    var context = new webkitAudioContext();
-    var microphone = context.createMediaStreamSource(stream);
-    var gainFilter = this.gainFilter = context.createGainNode();
-    var destination = context.createMediaStreamDestination();
-    var outputStream = destination.stream;
-
-    microphone.connect(gainFilter);
-    gainFilter.connect(destination);
-
-    stream.removeTrack(stream.getAudioTracks()[0]);
-    stream.addTrack(outputStream.getAudioTracks()[0]);
-
-    return stream;
-};
-
-// sets the gain input on the microphone if web audio
-// is available.
-WebRTC.prototype.setMicVolume = function (volume) {
-    if (!webrtc.webAudio) return;
-    this.gainFilter.gain.value = volume;
-};
-
 // We do this as a seperate method in order to
 // still leave the "setMicVolume" as a working
 // method.
 WebRTC.prototype.setMicIfEnabled = function (volume) {
     if (!this.config.autoAdjustMic) return;
-    this.setMicVolume(volume);
+    this.gainController.setGain(volume);
 };
 
 // Video controls
@@ -336,7 +314,7 @@ Peer.prototype.handleStreamRemoved = function () {
 
 module.exports = WebRTC;
 
-},{"getusermedia":4,"hark":6,"rtcpeerconnection":3,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
+},{"getusermedia":3,"hark":6,"mediastream-gain":7,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
 // created by @HenrikJoreteg
 var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
 var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
@@ -349,21 +327,22 @@ var prefix = function () {
     }
 }();
 var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
-var webAudio = !!window.webkitAudioContext;
+var AudioContext = window.webkitAudioContext || window.AudioContext;
 
 // export support flags and constructors.prototype && PC
 module.exports = {
     support: !!PC,
     dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
     prefix: prefix,
-    webAudio: webAudio,
+    webAudio: !!AudioContext.prototype.createMediaStreamSource,
     screenSharing: screenSharing,
+    AudioContext: AudioContext,
     PeerConnection: PC,
     SessionDescription: SessionDescription,
     IceCandidate: IceCandidate
 };
 
-},{}],4:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 // getUserMedia helper by @HenrikJoreteg
 var func = (navigator.getUserMedia ||
             navigator.webkitGetUserMedia ||
@@ -564,7 +543,34 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],3:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
+// created by @HenrikJoreteg
+var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
+var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
+var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
+var prefix = function () {
+    if (window.mozRTCPeerConnection) {
+        return 'moz';
+    } else if (window.webkitRTCPeerConnection) {
+        return 'webkit';
+    }
+}();
+var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
+var webAudio = !!window.webkitAudioContext;
+
+// export support flags and constructors.prototype && PC
+module.exports = {
+    support: !!PC,
+    dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
+    prefix: prefix,
+    webAudio: webAudio,
+    screenSharing: screenSharing,
+    PeerConnection: PC,
+    SessionDescription: SessionDescription,
+    IceCandidate: IceCandidate
+};
+
+},{}],4:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 var webrtc = require('webrtcsupport');
 
@@ -702,7 +708,7 @@ PeerConnection.prototype.close = function () {
 
 module.exports = PeerConnection;
 
-},{"webrtcsupport":2,"wildemitter":5}],6:[function(require,module,exports){
+},{"webrtcsupport":8,"wildemitter":5}],6:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 
 function getMaxVolume (analyser, fftBins) {
@@ -795,6 +801,53 @@ module.exports = function(stream, options) {
   return harker;
 }
 
-},{"wildemitter":5}]},{},[1])(1)
+},{"wildemitter":5}],7:[function(require,module,exports){
+var support = require('webrtcsupport');
+
+
+function GainController(stream) {
+    this.support = support.webAudio;
+
+    // set our starting value
+    this.gain = 1;
+
+    if (this.support) {
+        var context = this.context = new support.AudioContext();
+        this.microphone = context.createMediaStreamSource(stream);
+        this.gainFilter = context.createGain();
+        this.destination = context.createMediaStreamDestination();
+        this.outputStream = this.destination.stream;
+        this.microphone.connect(this.gainFilter);
+        this.gainFilter.connect(this.destination);
+        stream.removeTrack(stream.getAudioTracks()[0]);
+        stream.addTrack(this.outputStream.getAudioTracks()[0]);
+    }
+    this.stream = stream;
+}
+
+// setting
+GainController.prototype.setGain = function (val) {
+    // check for support
+    if (!this.support) return;
+    this.gainFilter.gain.value = val;
+    this.gain = val;
+};
+
+GainController.prototype.getGain = function () {
+    return this.gain;
+};
+
+GainController.prototype.off = function () {
+    return this.setGain(0);
+};
+
+GainController.prototype.on = function () {
+    this.setGain(1);
+};
+
+
+module.exports = GainController;
+
+},{"webrtcsupport":2}]},{},[1])(1)
 });
 ;
