@@ -26,6 +26,7 @@ function WebRTC(opts) {
                     {RtpDataChannels: true}
                 ]
             },
+            autoAdjustMic: false,
             media: {
                 audio: true,
                 video: true
@@ -88,7 +89,7 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
             self.localStream = self.setupMicVolumeControl(stream);
 
             // start out somewhat muted if we can track audio
-            self.setMicVolume(0.5);
+            self.setMicIfEnabled(0.5);
 
             self.emit('localStream', stream);
         }
@@ -117,7 +118,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
 
     audio.on('speaking', function() {
         if (self.hardMuted) return;
-        self.setMicVolume(1);
+        self.setMicIfEnabled(1);
         self.sendToAll('speaking', {});
         self.emit('speaking');
     });
@@ -127,7 +128,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
         if (timeout) clearTimeout(timeout);
 
         timeout = setTimeout(function () {
-            self.setMicVolume(0.5);
+            self.setMicIfEnabled(0.5);
             self.sendToAll('stopped_speaking', {});
             self.emit('stoppedSpeaking');
         }, 1000);
@@ -135,7 +136,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
 };
 
 WebRTC.prototype.setupMicVolumeControl = function (stream) {
-    if (!webrtc.webAudio) return stream;
+    if (!webrtc.webAudio || !this.config.autoAdjustMic) return stream;
 
     var context = new webkitAudioContext();
     var microphone = context.createMediaStreamSource(stream);
@@ -152,10 +153,19 @@ WebRTC.prototype.setupMicVolumeControl = function (stream) {
     return stream;
 };
 
-
+// sets the gain input on the microphone if web audio
+// is available.
 WebRTC.prototype.setMicVolume = function (volume) {
     if (!webrtc.webAudio) return;
     this.gainFilter.gain.value = volume;
+};
+
+// We do this as a seperate method in order to
+// still leave the "setMicVolume" as a working
+// method.
+WebRTC.prototype.setMicIfEnabled = function (volume) {
+    if (!this.config.autoAdjustMic) return;
+    this.setMicVolume(volume);
 };
 
 // Video controls
@@ -182,7 +192,7 @@ WebRTC.prototype.resume = function () {
 WebRTC.prototype._audioEnabled = function (bool) {
     // work around for chrome 27 bug where disabling tracks
     // doesn't seem to work (works in canary, remove when working)
-    this.setMicVolume(bool ? 1 : 0);
+    this.setMicIfEnabled(bool ? 1 : 0);
     this.localStream.getAudioTracks().forEach(function (track) {
         track.enabled = !!bool;
     });
@@ -326,7 +336,34 @@ Peer.prototype.handleStreamRemoved = function () {
 
 module.exports = WebRTC;
 
-},{"getusermedia":3,"hark":6,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],3:[function(require,module,exports){
+},{"getusermedia":4,"hark":6,"rtcpeerconnection":3,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
+// created by @HenrikJoreteg
+var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
+var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
+var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
+var prefix = function () {
+    if (window.mozRTCPeerConnection) {
+        return 'moz';
+    } else if (window.webkitRTCPeerConnection) {
+        return 'webkit';
+    }
+}();
+var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
+var webAudio = !!window.webkitAudioContext;
+
+// export support flags and constructors.prototype && PC
+module.exports = {
+    support: !!PC,
+    dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
+    prefix: prefix,
+    webAudio: webAudio,
+    screenSharing: screenSharing,
+    PeerConnection: PC,
+    SessionDescription: SessionDescription,
+    IceCandidate: IceCandidate
+};
+
+},{}],4:[function(require,module,exports){
 // getUserMedia helper by @HenrikJoreteg
 var func = (navigator.getUserMedia ||
             navigator.webkitGetUserMedia ||
@@ -388,33 +425,6 @@ module.exports = function (constraints, cb) {
 
         cb(error);
     });
-};
-
-},{}],2:[function(require,module,exports){
-// created by @HenrikJoreteg
-var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
-var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
-var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
-var prefix = function () {
-    if (window.mozRTCPeerConnection) {
-        return 'moz';
-    } else if (window.webkitRTCPeerConnection) {
-        return 'webkit';
-    }
-}();
-var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
-var webAudio = !!window.webkitAudioContext;
-
-// export support flags and constructors.prototype && PC
-module.exports = {
-    support: !!PC,
-    dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
-    prefix: prefix,
-    webAudio: webAudio,
-    screenSharing: screenSharing,
-    PeerConnection: PC,
-    SessionDescription: SessionDescription,
-    IceCandidate: IceCandidate
 };
 
 },{}],5:[function(require,module,exports){
@@ -554,7 +564,7 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],4:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 var webrtc = require('webrtcsupport');
 
