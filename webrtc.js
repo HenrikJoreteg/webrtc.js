@@ -4,14 +4,14 @@ var PeerConnection = require('rtcpeerconnection');
 var WildEmitter = require('wildemitter');
 var hark = require('hark');
 var GainController = require('mediastream-gain');
-var log;
+var mockconsole = require('mockconsole');
 
 
 function WebRTC(opts) {
     var self = this;
     var options = opts || {};
     var config = this.config = {
-            log: false,
+            debug: false,
             localVideoEl: '',
             remoteVideosEl: '',
             autoRequestMedia: false,
@@ -33,31 +33,53 @@ function WebRTC(opts) {
         };
     var item, connection;
 
-    // check for support
-    if (!webrtc.support) {
-        console.error('Your browser doesn\'t seem to support WebRTC');
-    }
-
     // expose screensharing check
     this.screenSharingSupport = webrtc.screenSharing;
+
+    // We also allow a 'logger' option. It can be any object that implements
+    // log, warn, and error methods.
+    // We log nothing by default, following "the rule of silence":
+    // http://www.linfo.org/rule_of_silence.html
+    this.logger = function () {
+        // we assume that if you're in debug mode and you didn't
+        // pass in a logger, you actually want to log as much as
+        // possible.
+        if (opts.debug) {
+            return opts.logger || console;
+        } else {
+        // or we'll use your logger which should have its own logic
+        // for output. Or we'll return the no-op.
+            return opts.logger || mockconsole;
+        }
+    }();
 
     // set options
     for (item in options) {
         this.config[item] = options[item];
     }
 
-    // log if configured to
-    log = (this.config.log) ? console.log.bind(console) : function () {};
+    // check for support
+    if (!webrtc.support) {
+        this.logger.error('Your browser doesn\'t seem to support WebRTC');
+    }
 
     // where we'll store our peer connections
     this.peers = [];
 
     WildEmitter.call(this);
 
-    // log events
-    if (this.config.log) {
+    // log events in debug mode
+    if (this.config.debug) {
         this.on('*', function (event, val1, val2) {
-            log('event:', event, val1, val2);
+            var logger;
+            // if you didn't pass in a logger and you explicitly turning on debug
+            // we're just going to assume you're wanting log output with console
+            if (self.config.logger === mockconsole) {
+                logger = console;
+            } else {
+                logger = self.logger;
+            }
+            logger.log('event:', event, val1, val2);
         });
     }
 }
@@ -98,6 +120,13 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
     });
 };
 
+WebRTC.prototype.stopLocalMedia = function () {
+    if (this.localStream) {
+        this.localStream.stop();
+        this.emit('localStreamStopped');
+    }
+};
+
 // Audio controls
 WebRTC.prototype.mute = function () {
     this._audioEnabled(false);
@@ -112,7 +141,7 @@ WebRTC.prototype.unmute = function () {
 
 // Audio monitor
 WebRTC.prototype.setupAudioMonitor = function (stream) {
-    log('Setup audio');
+    this.logger.log('Setup audio');
     var audio = hark(stream);
     var self = this;
     var timeout;
@@ -216,11 +245,12 @@ function Peer(options) {
     this.pc.on('ice', this.onIceCandidate.bind(this));
     this.pc.on('addStream', this.handleRemoteStreamAdded.bind(this));
     this.pc.on('removeStream', this.handleStreamRemoved.bind(this));
+    this.logger = this.parent.logger;
 
     // handle screensharing/broadcast mode
     if (options.type === 'screen') {
         if (this.parent.localScreen && this.sharemyscreen) {
-            log('adding local screen stream to peer connection');
+            this.logger.log('adding local screen stream to peer connection');
             this.pc.addStream(this.parent.localScreen);
             this.broadcaster = options.broadcaster;
         }
@@ -246,7 +276,7 @@ Peer.prototype = Object.create(WildEmitter.prototype, {
 Peer.prototype.handleMessage = function (message) {
     var self = this;
 
-    log('getting', message.type, message);
+    this.logger.log('getting', message.type, message);
 
     if (message.prefix) this.browserPrefix = message.prefix;
 
@@ -274,7 +304,7 @@ Peer.prototype.send = function (messageType, payload) {
         payload: payload,
         prefix: webrtc.prefix
     };
-    log('sending', messageType, message);
+    this.logger.log('sending', messageType, message);
     this.parent.emit('message', message);
 };
 
@@ -283,7 +313,7 @@ Peer.prototype.onIceCandidate = function (candidate) {
     if (candidate) {
         this.send('candidate', candidate);
     } else {
-        log("End of candidates.");
+        this.logger.log("End of candidates.");
     }
 };
 

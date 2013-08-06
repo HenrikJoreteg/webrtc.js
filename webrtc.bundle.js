@@ -6,14 +6,14 @@ var PeerConnection = require('rtcpeerconnection');
 var WildEmitter = require('wildemitter');
 var hark = require('hark');
 var GainController = require('mediastream-gain');
-var log;
+var mockconsole = require('mockconsole');
 
 
 function WebRTC(opts) {
     var self = this;
     var options = opts || {};
     var config = this.config = {
-            log: false,
+            debug: false,
             localVideoEl: '',
             remoteVideosEl: '',
             autoRequestMedia: false,
@@ -35,31 +35,53 @@ function WebRTC(opts) {
         };
     var item, connection;
 
-    // check for support
-    if (!webrtc.support) {
-        console.error('Your browser doesn\'t seem to support WebRTC');
-    }
-
     // expose screensharing check
     this.screenSharingSupport = webrtc.screenSharing;
+
+    // We also allow a 'logger' option. It can be any object that implements
+    // log, warn, and error methods.
+    // We log nothing by default, following "the rule of silence":
+    // http://www.linfo.org/rule_of_silence.html
+    this.logger = function () {
+        // we assume that if you're in debug mode and you didn't
+        // pass in a logger, you actually want to log as much as
+        // possible.
+        if (opts.debug) {
+            return opts.logger || console;
+        } else {
+        // or we'll use your logger which should have its own logic
+        // for output. Or we'll return the no-op.
+            return opts.logger || mockconsole;
+        }
+    }();
 
     // set options
     for (item in options) {
         this.config[item] = options[item];
     }
 
-    // log if configured to
-    log = (this.config.log) ? console.log.bind(console) : function () {};
+    // check for support
+    if (!webrtc.support) {
+        this.logger.error('Your browser doesn\'t seem to support WebRTC');
+    }
 
     // where we'll store our peer connections
     this.peers = [];
 
     WildEmitter.call(this);
 
-    // log events
-    if (this.config.log) {
+    // log events in debug mode
+    if (this.config.debug) {
         this.on('*', function (event, val1, val2) {
-            log('event:', event, val1, val2);
+            var logger;
+            // if you didn't pass in a logger and you explicitly turning on debug
+            // we're just going to assume you're wanting log output with console
+            if (self.config.logger === mockconsole) {
+                logger = console;
+            } else {
+                logger = self.logger;
+            }
+            logger.log('event:', event, val1, val2);
         });
     }
 }
@@ -100,6 +122,13 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
     });
 };
 
+WebRTC.prototype.stopLocalMedia = function () {
+    if (this.localStream) {
+        this.localStream.stop();
+        this.emit('localStreamStopped');
+    }
+};
+
 // Audio controls
 WebRTC.prototype.mute = function () {
     this._audioEnabled(false);
@@ -114,7 +143,7 @@ WebRTC.prototype.unmute = function () {
 
 // Audio monitor
 WebRTC.prototype.setupAudioMonitor = function (stream) {
-    log('Setup audio');
+    this.logger.log('Setup audio');
     var audio = hark(stream);
     var self = this;
     var timeout;
@@ -218,11 +247,12 @@ function Peer(options) {
     this.pc.on('ice', this.onIceCandidate.bind(this));
     this.pc.on('addStream', this.handleRemoteStreamAdded.bind(this));
     this.pc.on('removeStream', this.handleStreamRemoved.bind(this));
+    this.logger = this.parent.logger;
 
     // handle screensharing/broadcast mode
     if (options.type === 'screen') {
         if (this.parent.localScreen && this.sharemyscreen) {
-            log('adding local screen stream to peer connection');
+            this.logger.log('adding local screen stream to peer connection');
             this.pc.addStream(this.parent.localScreen);
             this.broadcaster = options.broadcaster;
         }
@@ -248,7 +278,7 @@ Peer.prototype = Object.create(WildEmitter.prototype, {
 Peer.prototype.handleMessage = function (message) {
     var self = this;
 
-    log('getting', message.type, message);
+    this.logger.log('getting', message.type, message);
 
     if (message.prefix) this.browserPrefix = message.prefix;
 
@@ -276,7 +306,7 @@ Peer.prototype.send = function (messageType, payload) {
         payload: payload,
         prefix: webrtc.prefix
     };
-    log('sending', messageType, message);
+    this.logger.log('sending', messageType, message);
     this.parent.emit('message', message);
 };
 
@@ -285,7 +315,7 @@ Peer.prototype.onIceCandidate = function (candidate) {
     if (candidate) {
         this.send('candidate', candidate);
     } else {
-        log("End of candidates.");
+        this.logger.log("End of candidates.");
     }
 };
 
@@ -314,7 +344,35 @@ Peer.prototype.handleStreamRemoved = function () {
 
 module.exports = WebRTC;
 
-},{"getusermedia":3,"hark":6,"mediastream-gain":7,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],3:[function(require,module,exports){
+},{"getusermedia":3,"hark":6,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
+// created by @HenrikJoreteg
+var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
+var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
+var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
+var prefix = function () {
+    if (window.mozRTCPeerConnection) {
+        return 'moz';
+    } else if (window.webkitRTCPeerConnection) {
+        return 'webkit';
+    }
+}();
+var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
+var AudioContext = window.webkitAudioContext || window.AudioContext;
+
+// export support flags and constructors.prototype && PC
+module.exports = {
+    support: !!PC,
+    dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
+    prefix: prefix,
+    webAudio: !!(AudioContext && AudioContext.prototype.createMediaStreamSource),
+    screenSharing: screenSharing,
+    AudioContext: AudioContext,
+    PeerConnection: PC,
+    SessionDescription: SessionDescription,
+    IceCandidate: IceCandidate
+};
+
+},{}],3:[function(require,module,exports){
 // getUserMedia helper by @HenrikJoreteg
 var func = (navigator.getUserMedia ||
             navigator.webkitGetUserMedia ||
@@ -376,34 +434,6 @@ module.exports = function (constraints, cb) {
 
         cb(error);
     });
-};
-
-},{}],2:[function(require,module,exports){
-// created by @HenrikJoreteg
-var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
-var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
-var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
-var prefix = function () {
-    if (window.mozRTCPeerConnection) {
-        return 'moz';
-    } else if (window.webkitRTCPeerConnection) {
-        return 'webkit';
-    }
-}();
-var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
-var AudioContext = window.webkitAudioContext || window.AudioContext;
-
-// export support flags and constructors.prototype && PC
-module.exports = {
-    support: !!PC,
-    dataChannel: !!(PC && PC.prototype && PC.prototype.createDataChannel),
-    prefix: prefix,
-    webAudio: !!(AudioContext && AudioContext.prototype.createMediaStreamSource),
-    screenSharing: screenSharing,
-    AudioContext: AudioContext,
-    PeerConnection: PC,
-    SessionDescription: SessionDescription,
-    IceCandidate: IceCandidate
 };
 
 },{}],5:[function(require,module,exports){
@@ -544,6 +574,18 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
 };
 
 },{}],8:[function(require,module,exports){
+var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
+var l = methods.length;
+var fn = function () {};
+var mockconsole = {};
+
+while (l--) {
+    mockconsole[methods[l]] = fn;
+}
+
+module.exports = mockconsole;
+
+},{}],9:[function(require,module,exports){
 // created by @HenrikJoreteg
 var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection || window.RTCPeerConnection;
 var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
@@ -708,7 +750,54 @@ PeerConnection.prototype.close = function () {
 
 module.exports = PeerConnection;
 
-},{"webrtcsupport":8,"wildemitter":5}],6:[function(require,module,exports){
+},{"webrtcsupport":9,"wildemitter":5}],7:[function(require,module,exports){
+var support = require('webrtcsupport');
+
+
+function GainController(stream) {
+    this.support = support.webAudio;
+
+    // set our starting value
+    this.gain = 1;
+
+    if (this.support) {
+        var context = this.context = new support.AudioContext();
+        this.microphone = context.createMediaStreamSource(stream);
+        this.gainFilter = context.createGain();
+        this.destination = context.createMediaStreamDestination();
+        this.outputStream = this.destination.stream;
+        this.microphone.connect(this.gainFilter);
+        this.gainFilter.connect(this.destination);
+        stream.removeTrack(stream.getAudioTracks()[0]);
+        stream.addTrack(this.outputStream.getAudioTracks()[0]);
+    }
+    this.stream = stream;
+}
+
+// setting
+GainController.prototype.setGain = function (val) {
+    // check for support
+    if (!this.support) return;
+    this.gainFilter.gain.value = val;
+    this.gain = val;
+};
+
+GainController.prototype.getGain = function () {
+    return this.gain;
+};
+
+GainController.prototype.off = function () {
+    return this.setGain(0);
+};
+
+GainController.prototype.on = function () {
+    this.setGain(1);
+};
+
+
+module.exports = GainController;
+
+},{"webrtcsupport":2}],6:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 
 function getMaxVolume (analyser, fftBins) {
@@ -801,53 +890,6 @@ module.exports = function(stream, options) {
   return harker;
 }
 
-},{"wildemitter":5}],7:[function(require,module,exports){
-var support = require('webrtcsupport');
-
-
-function GainController(stream) {
-    this.support = support.webAudio;
-
-    // set our starting value
-    this.gain = 1;
-
-    if (this.support) {
-        var context = this.context = new support.AudioContext();
-        this.microphone = context.createMediaStreamSource(stream);
-        this.gainFilter = context.createGain();
-        this.destination = context.createMediaStreamDestination();
-        this.outputStream = this.destination.stream;
-        this.microphone.connect(this.gainFilter);
-        this.gainFilter.connect(this.destination);
-        stream.removeTrack(stream.getAudioTracks()[0]);
-        stream.addTrack(this.outputStream.getAudioTracks()[0]);
-    }
-    this.stream = stream;
-}
-
-// setting
-GainController.prototype.setGain = function (val) {
-    // check for support
-    if (!this.support) return;
-    this.gainFilter.gain.value = val;
-    this.gain = val;
-};
-
-GainController.prototype.getGain = function () {
-    return this.gain;
-};
-
-GainController.prototype.off = function () {
-    return this.setGain(0);
-};
-
-GainController.prototype.on = function () {
-    this.setGain(1);
-};
-
-
-module.exports = GainController;
-
-},{"webrtcsupport":2}]},{},[1])(1)
+},{"wildemitter":5}]},{},[1])(1)
 });
 ;
