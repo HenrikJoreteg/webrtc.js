@@ -1,6 +1,6 @@
 {
   "name": "webrtc",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "keywords": ["webrtc", "browser"],
   "repository": {
     "type": "git", 
@@ -14,7 +14,7 @@
     "rtcpeerconnection": "0.3.1",
     "getusermedia": "0.2.1",
     "hark": "0.1.1",
-    "mediastream-gain": "0.0.2",
+    "mediastream-gain": "0.1.0",
     "mockconsole": "0.0.1"
   },
   "devDependencies": {
