@@ -29,7 +29,8 @@ function WebRTC(opts) {
             media: {
                 audio: true,
                 video: true
-            }
+            },
+            detectSpeakingEvents: true
         };
     var item, connection;
 
@@ -104,15 +105,16 @@ WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
 
     getUserMedia(constraints, function (err, stream) {
         if (!err) {
-            if (constraints.audio) {
+            if (constraints.audio && self.config.detectSpeakingEvents) {
                 self.setupAudioMonitor(stream);
             }
             self.localStream = stream;
 
-            self.gainController = new GainController(stream);
-
-            // start out somewhat muted if we can track audio
-            self.setMicIfEnabled(0.5);
+            if (self.config.autoAdjustMic) {
+                self.gainController = new GainController(stream);
+                // start out somewhat muted if we can track audio
+                self.setMicIfEnabled(0.5);
+            }
 
             self.emit('localStream', stream);
         }
