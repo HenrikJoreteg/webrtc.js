@@ -274,10 +274,21 @@ function Peer(options) {
         // we may not have reliable channels
         try {
             this.reliableChannel = this.getDataChannel('reliable', {reliable: true});
+            if (!this.reliableChannel.reliable) throw Error('Failed to make reliable channel');
         } catch (e) {
+            this.logger.warn('Failed to create reliable data channel.')
             this.reliableChannel = false;
+            delete this.channels.reliable;
         }
-        this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false});
+        // in FF I can't seem to create unreliable channels now
+        try {
+            this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false, preset: true});
+            if (this.unreliableChannel.unreliable !== false) throw Error('Failed to make unreliable channel');
+        } catch (e) {
+            this.logger.warn('Failed to create unreliable data channel.')
+            this.unreliableChannel = false;
+            delete this.channels.unreliableChannel;
+        }
     }
 
     // call emitter constructor
@@ -345,10 +356,10 @@ Peer.prototype._observeDataChannel = function (channel) {
 Peer.prototype.getDataChannel = function (name, opts) {
     if (!webrtc.dataChannel) return this.emit('error', new Error('createDataChannel not supported'));
     var channel = this.channels[name];
-    opts || (opts = {reliable: false});
+    opts || (opts = {});
     if (channel) return channel;
     // if we don't have one by this label, create it
-    channel = this.channels[name] = this.pc.pc.createDataChannel(name, opts);
+    channel = this.channels[name] = this.pc.createDataChannel(name, opts);
     this._observeDataChannel(channel);
     return channel;
 };
@@ -646,100 +657,7 @@ while (l--) {
 
 module.exports = mockconsole;
 
-},{}],6:[function(require,module,exports){
-var WildEmitter = require('wildemitter');
-
-function getMaxVolume (analyser, fftBins) {
-  var maxVolume = -Infinity;
-  analyser.getFloatFrequencyData(fftBins);
-
-  for(var i=0, ii=fftBins.length; i < ii; i++) {
-    if (fftBins[i] > maxVolume && fftBins[i] < 0) {
-      maxVolume = fftBins[i];
-    }
-  };
-
-  return maxVolume;
-}
-
-
-module.exports = function(stream, options) {
-  var harker = new WildEmitter();
-
-  // make it not break in non-supported browsers
-  if (!window.webkitAudioContext) return harker;
-
-  //Config
-  var options = options || {},
-      smoothing = (options.smoothing || 0.5),
-      interval = (options.interval || 100),
-      threshold = options.threshold,
-      play = options.play;
-
-  //Setup Audio Context
-  var audioContext = new webkitAudioContext();
-  var sourceNode, fftBins, analyser;
-
-  analyser = audioContext.createAnalyser();
-  analyser.fftSize = 512;
-  analyser.smoothingTimeConstant = smoothing;
-  fftBins = new Float32Array(analyser.fftSize);
-
-  if (stream.jquery) stream = stream[0];
-  if (stream instanceof HTMLAudioElement) {
-    //Audio Tag
-    sourceNode = audioContext.createMediaElementSource(stream);
-    if (typeof play === 'undefined') play = true;
-    threshold = threshold || -65;
-  } else {
-    //WebRTC Stream
-    sourceNode = audioContext.createMediaStreamSource(stream);
-    threshold = threshold || -45;
-  }
-
-  sourceNode.connect(analyser);
-  if (play) analyser.connect(audioContext.destination);
-
-  harker.speaking = false;
-
-  harker.setThreshold = function(t) {
-    threshold = t;
-  };
-
-  harker.setInterval = function(i) {
-    interval = i;
-  };
-
-  // Poll the analyser node to determine if speaking
-  // and emit events if changed
-  var looper = function() {
-    setTimeout(function() {
-      var currentVolume = getMaxVolume(analyser, fftBins);
-
-      harker.emit('volume_change', currentVolume, threshold);
-
-      if (currentVolume > threshold) {
-        if (!harker.speaking) {
-          harker.speaking = true;
-          harker.emit('speaking');
-        }
-      } else {
-        if (harker.speaking) {
-          harker.speaking = false;
-          harker.emit('stopped_speaking');
-        }
-      }
-
-      looper();
-    }, interval);
-  };
-  looper();
-
-
-  return harker;
-}
-
-},{"wildemitter":5}],4:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 var webrtc = require('webrtcsupport');
 
@@ -924,9 +842,137 @@ PeerConnection.prototype._applySdpHack = function (sdp) {
     }
 };
 
+// Create a data channel spec reference:
+// http://dev.w3.org/2011/webrtc/editor/webrtc.html#idl-def-RTCDataChannelInit
+PeerConnection.prototype.createDataChannel = function (name, opts) {
+    opts || (opts = {});
+    var reliable = !!opts.reliable;
+    var protocol = opts.protocol || 'text/plain';
+    var negotiated = !!(opts.negotiated || opts.preset);
+    var settings;
+    var channel;
+    // firefox is a bit more finnicky
+    if (webrtc.prefix === 'moz') {
+        if (reliable) {
+            settings = {
+                protocol: protocol,
+                preset: negotiated,
+                stream: name
+            };
+        } else {
+            settings = {};
+        }
+        channel = this.pc.createDataChannel(name, settings);
+        channel.binaryType = 'blob';
+    } else {
+        if (reliable) {
+            settings = {
+                reliable: true
+            };
+        } else {
+            settings = {reliable: false};
+        }
+        channel = this.pc.createDataChannel(name, settings);
+    }
+    return channel;
+};
+
 module.exports = PeerConnection;
 
-},{"webrtcsupport":2,"wildemitter":5}],7:[function(require,module,exports){
+},{"webrtcsupport":2,"wildemitter":5}],6:[function(require,module,exports){
+var WildEmitter = require('wildemitter');
+
+function getMaxVolume (analyser, fftBins) {
+  var maxVolume = -Infinity;
+  analyser.getFloatFrequencyData(fftBins);
+
+  for(var i=0, ii=fftBins.length; i < ii; i++) {
+    if (fftBins[i] > maxVolume && fftBins[i] < 0) {
+      maxVolume = fftBins[i];
+    }
+  };
+
+  return maxVolume;
+}
+
+
+module.exports = function(stream, options) {
+  var harker = new WildEmitter();
+
+  // make it not break in non-supported browsers
+  if (!window.webkitAudioContext) return harker;
+
+  //Config
+  var options = options || {},
+      smoothing = (options.smoothing || 0.5),
+      interval = (options.interval || 100),
+      threshold = options.threshold,
+      play = options.play;
+
+  //Setup Audio Context
+  var audioContext = new webkitAudioContext();
+  var sourceNode, fftBins, analyser;
+
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = smoothing;
+  fftBins = new Float32Array(analyser.fftSize);
+
+  if (stream.jquery) stream = stream[0];
+  if (stream instanceof HTMLAudioElement) {
+    //Audio Tag
+    sourceNode = audioContext.createMediaElementSource(stream);
+    if (typeof play === 'undefined') play = true;
+    threshold = threshold || -65;
+  } else {
+    //WebRTC Stream
+    sourceNode = audioContext.createMediaStreamSource(stream);
+    threshold = threshold || -45;
+  }
+
+  sourceNode.connect(analyser);
+  if (play) analyser.connect(audioContext.destination);
+
+  harker.speaking = false;
+
+  harker.setThreshold = function(t) {
+    threshold = t;
+  };
+
+  harker.setInterval = function(i) {
+    interval = i;
+  };
+
+  // Poll the analyser node to determine if speaking
+  // and emit events if changed
+  var looper = function() {
+    setTimeout(function() {
+      var currentVolume = getMaxVolume(analyser, fftBins);
+
+      harker.emit('volume_change', currentVolume, threshold);
+
+      if (currentVolume > threshold) {
+        if (!harker.speaking) {
+          harker.speaking = true;
+          harker.emit('speaking');
+        }
+      } else {
+        if (harker.speaking) {
+          harker.speaking = false;
+          harker.emit('stopped_speaking');
+        }
+      }
+
+      looper();
+    }, interval);
+  };
+  looper();
+
+
+  return harker;
+}
+
+},{"wildemitter":5}],7:[function(require,module,exports){
 var support = require('webrtcsupport');
 
 

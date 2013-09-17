@@ -272,10 +272,21 @@ function Peer(options) {
         // we may not have reliable channels
         try {
             this.reliableChannel = this.getDataChannel('reliable', {reliable: true});
+            if (!this.reliableChannel.reliable) throw Error('Failed to make reliable channel');
         } catch (e) {
+            this.logger.warn('Failed to create reliable data channel.')
             this.reliableChannel = false;
+            delete this.channels.reliable;
         }
-        this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false});
+        // in FF I can't seem to create unreliable channels now
+        try {
+            this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false, preset: true});
+            if (this.unreliableChannel.unreliable !== false) throw Error('Failed to make unreliable channel');
+        } catch (e) {
+            this.logger.warn('Failed to create unreliable data channel.')
+            this.unreliableChannel = false;
+            delete this.channels.unreliableChannel;
+        }
     }
 
     // call emitter constructor
@@ -343,10 +354,10 @@ Peer.prototype._observeDataChannel = function (channel) {
 Peer.prototype.getDataChannel = function (name, opts) {
     if (!webrtc.dataChannel) return this.emit('error', new Error('createDataChannel not supported'));
     var channel = this.channels[name];
-    opts || (opts = {reliable: false});
+    opts || (opts = {});
     if (channel) return channel;
     // if we don't have one by this label, create it
-    channel = this.channels[name] = this.pc.pc.createDataChannel(name, opts);
+    channel = this.channels[name] = this.pc.createDataChannel(name, opts);
     this._observeDataChannel(channel);
     return channel;
 };
