@@ -7,7 +7,7 @@
     "url": "git@github.com:henrikjoreteg/webrtc.js.git"
   },
   "main": "./webrtc.js",
-  "description": "WebRTC abstraction for managing it simple to manage multiple peer connections of various types.",
+  "description": "WebRTC abstraction for making it simple to manage multiple peer connections of various types.",
   "dependencies": {
     "webrtcsupport": "0.7.0",
     "wildemitter": "0.0.5",
