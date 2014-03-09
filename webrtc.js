@@ -21,8 +21,7 @@ function WebRTC(opts) {
             },
             peerConnectionContraints: {
                 optional: [
-                    {DtlsSrtpKeyAgreement: true},
-                    {RtpDataChannels: true}
+                    {DtlsSrtpKeyAgreement: true}
                 ]
             },
             autoAdjustMic: false,
