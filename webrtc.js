@@ -273,7 +273,7 @@ function Peer(options) {
             this.reliableChannel = this.getDataChannel('reliable', {reliable: true});
             if (!this.reliableChannel.reliable) throw Error('Failed to make reliable channel');
         } catch (e) {
-            this.logger.warn('Failed to create reliable data channel.')
+            this.logger.warn('Failed to create reliable data channel.');
             this.reliableChannel = false;
             delete this.channels.reliable;
         }
@@ -282,7 +282,7 @@ function Peer(options) {
             this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false, preset: true});
             if (this.unreliableChannel.unreliable !== false) throw Error('Failed to make unreliable channel');
         } catch (e) {
-            this.logger.warn('Failed to create unreliable data channel.')
+            this.logger.warn('Failed to create unreliable data channel.');
             this.unreliableChannel = false;
             delete this.channels.unreliableChannel;
         }
@@ -311,8 +311,17 @@ Peer.prototype.handleMessage = function (message) {
     if (message.prefix) this.browserPrefix = message.prefix;
 
     if (message.type === 'offer') {
-        this.pc.answer(message.payload, function (err, sessionDesc) {
-            self.send('answer', sessionDesc);
+        this.pc.handleOffer(message.payload, function (err) {
+            if (err) {
+                return;
+            }
+            // auto-accept
+            self.pc.answer(function (err, sessionDesc) {
+                self.send('answer', sessionDesc);
+            });
+            this.pc.answer(message.payload, function (err, sessionDesc) {
+                self.send('answer', sessionDesc);
+            });
         });
     } else if (message.type === 'answer') {
         this.pc.handleAnswer(message.payload);
