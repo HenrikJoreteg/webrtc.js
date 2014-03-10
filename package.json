@@ -13,11 +13,13 @@
     "wildemitter": "0.0.5",
     "rtcpeerconnection": "1.1.1",
     "getusermedia": "0.2.1",
+    "sdp-jingle-json": "1.0.x",
     "hark": "0.1.1",
     "mediastream-gain": "0.1.1",
     "mockconsole": "0.0.1"
   },
   "devDependencies": {
+    "precommit-hook": "0.3.8",
     "browserify": "2.22.0"
   }
 }
