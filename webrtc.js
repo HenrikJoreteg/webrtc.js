@@ -148,14 +148,14 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     var self = this;
     var timeout;
 
-    audio.on('speaking', function() {
+    audio.on('speaking', function () {
         if (self.hardMuted) return;
         self.setMicIfEnabled(1);
         self.sendToAll('speaking', {});
         self.emit('speaking');
     });
 
-    audio.on('stopped_speaking', function() {
+    audio.on('stopped_speaking', function () {
         if (self.hardMuted) return;
         if (timeout) clearTimeout(timeout);
 
@@ -265,27 +265,6 @@ function Peer(options) {
         }
     } else {
         this.pc.addStream(this.parent.localStream);
-    }
-
-    if (this.parent.config.enableDataChannels && webrtc.dataChannel) {
-        // we may not have reliable channels
-        try {
-            this.reliableChannel = this.getDataChannel('reliable', {reliable: true});
-            if (!this.reliableChannel.reliable) throw Error('Failed to make reliable channel');
-        } catch (e) {
-            this.logger.warn('Failed to create reliable data channel.');
-            this.reliableChannel = false;
-            delete this.channels.reliable;
-        }
-        // in FF I can't seem to create unreliable channels now
-        try {
-            this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false, preset: true});
-            if (this.unreliableChannel.unreliable !== false) throw Error('Failed to make unreliable channel');
-        } catch (e) {
-            this.logger.warn('Failed to create unreliable data channel.');
-            this.unreliableChannel = false;
-            delete this.channels.unreliableChannel;
-        }
     }
 
     // call emitter constructor

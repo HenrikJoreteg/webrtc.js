@@ -23,8 +23,7 @@ function WebRTC(opts) {
             },
             peerConnectionContraints: {
                 optional: [
-                    {DtlsSrtpKeyAgreement: true},
-                    {RtpDataChannels: true}
+                    {DtlsSrtpKeyAgreement: true}
                 ]
             },
             autoAdjustMic: false,
@@ -151,14 +150,14 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     var self = this;
     var timeout;
 
-    audio.on('speaking', function() {
+    audio.on('speaking', function () {
         if (self.hardMuted) return;
         self.setMicIfEnabled(1);
         self.sendToAll('speaking', {});
         self.emit('speaking');
     });
 
-    audio.on('stopped_speaking', function() {
+    audio.on('stopped_speaking', function () {
         if (self.hardMuted) return;
         if (timeout) clearTimeout(timeout);
 
@@ -270,27 +269,6 @@ function Peer(options) {
         this.pc.addStream(this.parent.localStream);
     }
 
-    if (this.parent.config.enableDataChannels && webrtc.dataChannel) {
-        // we may not have reliable channels
-        try {
-            this.reliableChannel = this.getDataChannel('reliable', {reliable: true});
-            if (!this.reliableChannel.reliable) throw Error('Failed to make reliable channel');
-        } catch (e) {
-            this.logger.warn('Failed to create reliable data channel.')
-            this.reliableChannel = false;
-            delete this.channels.reliable;
-        }
-        // in FF I can't seem to create unreliable channels now
-        try {
-            this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false, preset: true});
-            if (this.unreliableChannel.unreliable !== false) throw Error('Failed to make unreliable channel');
-        } catch (e) {
-            this.logger.warn('Failed to create unreliable data channel.')
-            this.unreliableChannel = false;
-            delete this.channels.unreliableChannel;
-        }
-    }
-
     // call emitter constructor
     WildEmitter.call(this);
 
@@ -314,8 +292,17 @@ Peer.prototype.handleMessage = function (message) {
     if (message.prefix) this.browserPrefix = message.prefix;
 
     if (message.type === 'offer') {
-        this.pc.answer(message.payload, function (err, sessionDesc) {
-            self.send('answer', sessionDesc);
+        this.pc.handleOffer(message.payload, function (err) {
+            if (err) {
+                return;
+            }
+            // auto-accept
+            self.pc.answer(function (err, sessionDesc) {
+                self.send('answer', sessionDesc);
+            });
+            this.pc.answer(message.payload, function (err, sessionDesc) {
+                self.send('answer', sessionDesc);
+            });
         });
     } else if (message.type === 'answer') {
         this.pc.handleAnswer(message.payload);
@@ -406,7 +393,7 @@ Peer.prototype.handleDataChannelAdded = function (channel) {
 
 module.exports = WebRTC;
 
-},{"getusermedia":3,"hark":6,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
+},{"getusermedia":3,"hark":6,"mediastream-gain":8,"mockconsole":7,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var isChrome = false;
@@ -645,7 +632,7 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],8:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
 var l = methods.length;
 var fn = function () {};
@@ -972,7 +959,7 @@ module.exports = function(stream, options) {
   return harker;
 }
 
-},{"wildemitter":5}],7:[function(require,module,exports){
+},{"wildemitter":5}],8:[function(require,module,exports){
 var support = require('webrtcsupport');
 
 
