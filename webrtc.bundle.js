@@ -168,7 +168,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
         }, 1000);
     });
     if (this.config.enableDataChannels) {
-        console.log('volume change over datachannels');
+        // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
         audio.on('volume_change', function (volume) {
             self.peers.forEach(function (peer) {
                 var dc = peer.getDataChannel('hark');
@@ -246,7 +246,7 @@ WebRTC.prototype.sendToAll = function (message, payload) {
 // sends message to all using a datachannel
 WebRTC.prototype.sendDirectlyToAll = function (channel, message, payload) {
     this.peers.forEach(function (peer) {
-        peer.sendDirect(channel, message, payload);
+        peer.sendDirectly(channel, message, payload);
     });
 };
 
@@ -328,6 +328,7 @@ Peer.prototype.handleMessage = function (message) {
     }
 };
 
+// send via signalling channel
 Peer.prototype.send = function (messageType, payload) {
     var message = {
         to: this.id,
@@ -341,7 +342,8 @@ Peer.prototype.send = function (messageType, payload) {
     this.parent.emit('message', message);
 };
 
-Peer.prototype.sendDirect = function (channel, messageType, payload) {
+// send via data channel
+Peer.prototype.sendDirectly = function (channel, messageType, payload) {
     var message = {
         type: messageType,
         payload: payload
@@ -356,13 +358,7 @@ Peer.prototype._observeDataChannel = function (channel) {
     channel.onclose = this.emit.bind(this, 'channelClose', channel);
     channel.onerror = this.emit.bind(this, 'channelError', channel);
     channel.onmessage = function (event) {
-        var data = JSON.parse(event.data);
-
-        console.log('data channel', channel.label, data);
-        if (data.type == 'volume') console.log('peer volume', data.volume);
-
-        self.emit('message', channel.label, event.data, channel, event);
-        self.emit('data', channel.label, JSON.parse(event.data), channel, event);
+        self.emit('channelMessage', self, channel.label, JSON.parse(event.data), channel, event);
     };
     channel.onopen = this.emit.bind(this, 'channelOpen', channel);
 };
@@ -907,7 +903,54 @@ PeerConnection.prototype.createDataChannel = function (name, opts) {
 
 module.exports = PeerConnection;
 
-},{"webrtcsupport":2,"wildemitter":5}],6:[function(require,module,exports){
+},{"webrtcsupport":2,"wildemitter":5}],7:[function(require,module,exports){
+var support = require('webrtcsupport');
+
+
+function GainController(stream) {
+    this.support = support.webAudio && support.mediaStream;
+
+    // set our starting value
+    this.gain = 1;
+
+    if (this.support) {
+        var context = this.context = new support.AudioContext();
+        this.microphone = context.createMediaStreamSource(stream);
+        this.gainFilter = context.createGain();
+        this.destination = context.createMediaStreamDestination();
+        this.outputStream = this.destination.stream;
+        this.microphone.connect(this.gainFilter);
+        this.gainFilter.connect(this.destination);
+        stream.removeTrack(stream.getAudioTracks()[0]);
+        stream.addTrack(this.outputStream.getAudioTracks()[0]);
+    }
+    this.stream = stream;
+}
+
+// setting
+GainController.prototype.setGain = function (val) {
+    // check for support
+    if (!this.support) return;
+    this.gainFilter.gain.value = val;
+    this.gain = val;
+};
+
+GainController.prototype.getGain = function () {
+    return this.gain;
+};
+
+GainController.prototype.off = function () {
+    return this.setGain(0);
+};
+
+GainController.prototype.on = function () {
+    this.setGain(1);
+};
+
+
+module.exports = GainController;
+
+},{"webrtcsupport":2}],6:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 
 function getMaxVolume (analyser, fftBins) {
@@ -1000,53 +1043,6 @@ module.exports = function(stream, options) {
   return harker;
 }
 
-},{"wildemitter":5}],7:[function(require,module,exports){
-var support = require('webrtcsupport');
-
-
-function GainController(stream) {
-    this.support = support.webAudio && support.mediaStream;
-
-    // set our starting value
-    this.gain = 1;
-
-    if (this.support) {
-        var context = this.context = new support.AudioContext();
-        this.microphone = context.createMediaStreamSource(stream);
-        this.gainFilter = context.createGain();
-        this.destination = context.createMediaStreamDestination();
-        this.outputStream = this.destination.stream;
-        this.microphone.connect(this.gainFilter);
-        this.gainFilter.connect(this.destination);
-        stream.removeTrack(stream.getAudioTracks()[0]);
-        stream.addTrack(this.outputStream.getAudioTracks()[0]);
-    }
-    this.stream = stream;
-}
-
-// setting
-GainController.prototype.setGain = function (val) {
-    // check for support
-    if (!this.support) return;
-    this.gainFilter.gain.value = val;
-    this.gain = val;
-};
-
-GainController.prototype.getGain = function () {
-    return this.gain;
-};
-
-GainController.prototype.off = function () {
-    return this.setGain(0);
-};
-
-GainController.prototype.on = function () {
-    this.setGain(1);
-};
-
-
-module.exports = GainController;
-
-},{"webrtcsupport":2}]},{},[1])(1)
+},{"wildemitter":5}]},{},[1])(1)
 });
 ;
