@@ -388,7 +388,8 @@ Peer.prototype.handleStreamRemoved = function () {
 };
 
 Peer.prototype.handleDataChannelAdded = function (channel) {
-    this.channels[channel.name] = channel;
+    this.channels[channel.label] = channel;
+    this._observeDataChannel(channel);
 };
 
 module.exports = WebRTC;
