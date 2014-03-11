@@ -298,9 +298,6 @@ Peer.prototype.handleMessage = function (message) {
             self.pc.answer(function (err, sessionDesc) {
                 self.send('answer', sessionDesc);
             });
-            this.pc.answer(message.payload, function (err, sessionDesc) {
-                self.send('answer', sessionDesc);
-            });
         });
     } else if (message.type === 'answer') {
         this.pc.handleAnswer(message.payload);
