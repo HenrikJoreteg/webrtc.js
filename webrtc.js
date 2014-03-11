@@ -367,14 +367,17 @@ Peer.prototype.start = function () {
 
 Peer.prototype.end = function () {
     this.pc.close();
-    this.handleStreamRemoved();
 };
 
 Peer.prototype.handleRemoteStreamAdded = function (event) {
+    var self = this;
     if (this.stream) {
         this.logger.warn('Already have a remote stream');
     } else {
         this.stream = event.stream;
+        this.stream.onended = function () {
+            self.handleStreamRemoved();
+        };
         this.parent.emit('peerStreamAdded', this);
     }
 };
