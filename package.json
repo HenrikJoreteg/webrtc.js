@@ -14,7 +14,7 @@
     "rtcpeerconnection": "1.1.1",
     "getusermedia": "0.2.1",
     "sdp-jingle-json": "1.0.x",
-    "hark": "0.1.1",
+    "hark": "0.2.x",
     "mediastream-gain": "0.1.1",
     "mockconsole": "0.0.1"
   },
