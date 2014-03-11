@@ -165,6 +165,16 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
             self.emit('stoppedSpeaking');
         }, 1000);
     });
+    if (this.config.enableDataChannels) {
+        // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
+        audio.on('volume_change', function (volume) {
+            self.peers.forEach(function (peer) {
+                var dc = peer.getDataChannel('hark');
+                if (dc.readyState != 'open') return;
+                dc.send(JSON.stringify({type: 'volume', volume: volume }));
+            });
+        });
+    }
 };
 
 // We do this as a seperate method in order to
@@ -231,6 +241,12 @@ WebRTC.prototype.sendToAll = function (message, payload) {
     });
 };
 
+// sends message to all using a datachannel
+WebRTC.prototype.sendDirectlyToAll = function (channel, message, payload) {
+    this.peers.forEach(function (peer) {
+        peer.sendDirectly(channel, message, payload);
+    });
+};
 
 function Peer(options) {
     var self = this;
@@ -310,6 +326,7 @@ Peer.prototype.handleMessage = function (message) {
     }
 };
 
+// send via signalling channel
 Peer.prototype.send = function (messageType, payload) {
     var message = {
         to: this.id,
@@ -323,13 +340,23 @@ Peer.prototype.send = function (messageType, payload) {
     this.parent.emit('message', message);
 };
 
+// send via data channel
+Peer.prototype.sendDirectly = function (channel, messageType, payload) {
+    var message = {
+        type: messageType,
+        payload: payload
+    };
+    this.logger.log('sending via datachannel', channel, messageType, message);
+    this.getDataChannel(channel).send(JSON.stringify(message));
+};
+
 // Internal method registering handlers for a data channel and emitting events on the peer
 Peer.prototype._observeDataChannel = function (channel) {
     var self = this;
     channel.onclose = this.emit.bind(this, 'channelClose', channel);
     channel.onerror = this.emit.bind(this, 'channelError', channel);
     channel.onmessage = function (event) {
-        self.emit('message', channel.label, event.data, channel, event);
+        self.emit('channelMessage', self, channel.label, JSON.parse(event.data), channel, event);
     };
     channel.onopen = this.emit.bind(this, 'channelOpen', channel);
 };
@@ -357,6 +384,15 @@ Peer.prototype.onIceCandidate = function (candidate) {
 
 Peer.prototype.start = function () {
     var self = this;
+
+    // well, the webrtc api requires that we either
+    // a) create a datachannel a priori
+    // b) do a renegotiation later to add the SCTP m-line
+    // Let's do (a) first...
+    if (this.parent.config.enableDataChannels) {
+        this.getDataChannel('simplewebrtc');
+    }
+
     this.pc.offer(function (err, sessionDescription) {
         self.send('offer', sessionDescription);
     });
