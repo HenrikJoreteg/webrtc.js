@@ -167,7 +167,8 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     });
     if (this.config.enableDataChannels) {
         // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
-        audio.on('volume_change', function (volume) {
+        audio.on('volume_change', function (volume, treshold) {
+            self.emit('volumeChange', volume, treshold);
             self.peers.forEach(function (peer) {
                 var dc = peer.getDataChannel('hark');
                 if (dc.readyState != 'open') return;
