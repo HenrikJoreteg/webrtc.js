@@ -21,8 +21,7 @@ function WebRTC(opts) {
             },
             peerConnectionContraints: {
                 optional: [
-                    {DtlsSrtpKeyAgreement: true},
-                    {RtpDataChannels: true}
+                    {DtlsSrtpKeyAgreement: true}
                 ]
             },
             autoAdjustMic: false,
@@ -149,14 +148,14 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     var self = this;
     var timeout;
 
-    audio.on('speaking', function() {
+    audio.on('speaking', function () {
         if (self.hardMuted) return;
         self.setMicIfEnabled(1);
         self.sendToAll('speaking', {});
         self.emit('speaking');
     });
 
-    audio.on('stopped_speaking', function() {
+    audio.on('stopped_speaking', function () {
         if (self.hardMuted) return;
         if (timeout) clearTimeout(timeout);
 
@@ -166,6 +165,17 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
             self.emit('stoppedSpeaking');
         }, 1000);
     });
+    if (this.config.enableDataChannels) {
+        // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
+        audio.on('volume_change', function (volume, treshold) {
+            self.emit('volumeChange', volume, treshold);
+            self.peers.forEach(function (peer) {
+                var dc = peer.getDataChannel('hark');
+                if (dc.readyState != 'open') return;
+                dc.send(JSON.stringify({type: 'volume', volume: volume }));
+            });
+        });
+    }
 };
 
 // We do this as a seperate method in order to
@@ -232,6 +242,12 @@ WebRTC.prototype.sendToAll = function (message, payload) {
     });
 };
 
+// sends message to all using a datachannel
+WebRTC.prototype.sendDirectlyToAll = function (channel, message, payload) {
+    this.peers.forEach(function (peer) {
+        peer.sendDirectly(channel, message, payload);
+    });
+};
 
 function Peer(options) {
     var self = this;
@@ -268,27 +284,6 @@ function Peer(options) {
         this.pc.addStream(this.parent.localStream);
     }
 
-    if (this.parent.config.enableDataChannels && webrtc.dataChannel) {
-        // we may not have reliable channels
-        try {
-            this.reliableChannel = this.getDataChannel('reliable', {reliable: true});
-            if (!this.reliableChannel.reliable) throw Error('Failed to make reliable channel');
-        } catch (e) {
-            this.logger.warn('Failed to create reliable data channel.')
-            this.reliableChannel = false;
-            delete this.channels.reliable;
-        }
-        // in FF I can't seem to create unreliable channels now
-        try {
-            this.unreliableChannel = this.getDataChannel('unreliable', {reliable: false, preset: true});
-            if (this.unreliableChannel.unreliable !== false) throw Error('Failed to make unreliable channel');
-        } catch (e) {
-            this.logger.warn('Failed to create unreliable data channel.')
-            this.unreliableChannel = false;
-            delete this.channels.unreliableChannel;
-        }
-    }
-
     // call emitter constructor
     WildEmitter.call(this);
 
@@ -312,8 +307,14 @@ Peer.prototype.handleMessage = function (message) {
     if (message.prefix) this.browserPrefix = message.prefix;
 
     if (message.type === 'offer') {
-        this.pc.answer(message.payload, function (err, sessionDesc) {
-            self.send('answer', sessionDesc);
+        this.pc.handleOffer(message.payload, function (err) {
+            if (err) {
+                return;
+            }
+            // auto-accept
+            self.pc.answer(function (err, sessionDesc) {
+                self.send('answer', sessionDesc);
+            });
         });
     } else if (message.type === 'answer') {
         this.pc.handleAnswer(message.payload);
@@ -326,6 +327,7 @@ Peer.prototype.handleMessage = function (message) {
     }
 };
 
+// send via signalling channel
 Peer.prototype.send = function (messageType, payload) {
     var message = {
         to: this.id,
@@ -339,13 +341,23 @@ Peer.prototype.send = function (messageType, payload) {
     this.parent.emit('message', message);
 };
 
+// send via data channel
+Peer.prototype.sendDirectly = function (channel, messageType, payload) {
+    var message = {
+        type: messageType,
+        payload: payload
+    };
+    this.logger.log('sending via datachannel', channel, messageType, message);
+    this.getDataChannel(channel).send(JSON.stringify(message));
+};
+
 // Internal method registering handlers for a data channel and emitting events on the peer
 Peer.prototype._observeDataChannel = function (channel) {
     var self = this;
     channel.onclose = this.emit.bind(this, 'channelClose', channel);
     channel.onerror = this.emit.bind(this, 'channelError', channel);
     channel.onmessage = function (event) {
-        self.emit('message', channel.label, event.data, channel, event);
+        self.emit('channelMessage', self, channel.label, JSON.parse(event.data), channel, event);
     };
     channel.onopen = this.emit.bind(this, 'channelOpen', channel);
 };
@@ -373,6 +385,15 @@ Peer.prototype.onIceCandidate = function (candidate) {
 
 Peer.prototype.start = function () {
     var self = this;
+
+    // well, the webrtc api requires that we either
+    // a) create a datachannel a priori
+    // b) do a renegotiation later to add the SCTP m-line
+    // Let's do (a) first...
+    if (this.parent.config.enableDataChannels) {
+        this.getDataChannel('simplewebrtc');
+    }
+
     this.pc.offer(function (err, sessionDescription) {
         self.send('offer', sessionDescription);
     });
@@ -380,14 +401,17 @@ Peer.prototype.start = function () {
 
 Peer.prototype.end = function () {
     this.pc.close();
-    this.handleStreamRemoved();
 };
 
 Peer.prototype.handleRemoteStreamAdded = function (event) {
+    var self = this;
     if (this.stream) {
         this.logger.warn('Already have a remote stream');
     } else {
         this.stream = event.stream;
+        this.stream.onended = function () {
+            self.handleStreamRemoved();
+        };
         this.parent.emit('peerStreamAdded', this);
     }
 };
@@ -399,7 +423,8 @@ Peer.prototype.handleStreamRemoved = function () {
 };
 
 Peer.prototype.handleDataChannelAdded = function (channel) {
-    this.channels[channel.name] = channel;
+    this.channels[channel.label] = channel;
+    this._observeDataChannel(channel);
 };
 
 module.exports = WebRTC;

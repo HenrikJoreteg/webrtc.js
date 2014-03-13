@@ -11,13 +11,16 @@
   "dependencies": {
     "webrtcsupport": "0.7.1",
     "wildemitter": "0.0.5",
-    "rtcpeerconnection": "1.1.1",
+    "rtcpeerconnection": "2.0.x",
     "getusermedia": "0.2.1",
-    "hark": "0.1.1",
+    "sdp-jingle-json": "1.0.x",
+    "hark": "0.2.x",
     "mediastream-gain": "0.1.1",
     "mockconsole": "0.0.1"
   },
   "devDependencies": {
-    "browserify": "2.22.0"
+    "precommit-hook": "0.3.8",
+    "browserify": "2.22.0",
+    "tape": "2.x"
   }
 }
