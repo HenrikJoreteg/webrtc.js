@@ -1,9 +1,12 @@
 {
   "name": "webrtc",
-  "version": "1.1.1",
-  "keywords": ["webrtc", "browser"],
+  "version": "1.2.0",
+  "keywords": [
+    "webrtc",
+    "browser"
+  ],
   "repository": {
-    "type": "git", 
+    "type": "git",
     "url": "git@github.com:henrikjoreteg/webrtc.js.git"
   },
   "main": "./webrtc.js",
