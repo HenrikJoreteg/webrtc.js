@@ -324,6 +324,10 @@ Peer.prototype.handleMessage = function (message) {
         this.parent.emit('speaking', {id: message.from});
     } else if (message.type === 'stopped_speaking') {
         this.parent.emit('stopped_speaking', {id: message.from});
+    } else if (message.type === 'mute') {
+        this.parent.emit('mute', {id: message.from, name: message.payload.name});
+    } else if (message.type === 'unmute') {
+        this.parent.emit('unmute', {id: message.from, name: message.payload.name});
     }
 };
 
