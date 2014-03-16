@@ -25,7 +25,7 @@ test('basic test with two peers', function (t) {
         peer2 = webrtc2.createPeer({});
 
         peer1.pc.on('iceConnectionStateChange', function () {
-            if (peer1.pc.pc.iceConnectionState == 'connected') {
+            if (peer1.pc.iceConnectionState == 'connected') {
                 t.pass('P2P connection established');
                 t.end();
             }
