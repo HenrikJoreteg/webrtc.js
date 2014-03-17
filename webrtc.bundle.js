@@ -170,6 +170,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     if (this.config.enableDataChannels) {
         // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
         audio.on('volume_change', function (volume, treshold) {
+            if (self.hardMuted) return;
             self.emit('volumeChange', volume, treshold);
             self.peers.forEach(function (peer) {
                 var dc = peer.getDataChannel('hark');
@@ -435,7 +436,7 @@ Peer.prototype.handleDataChannelAdded = function (channel) {
 
 module.exports = WebRTC;
 
-},{"getusermedia":3,"hark":6,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":5,"webrtcsupport":2,"wildemitter":4}],2:[function(require,module,exports){
+},{"getusermedia":2,"hark":6,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":4,"webrtcsupport":3,"wildemitter":5}],3:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var isChrome = false;
@@ -473,7 +474,7 @@ module.exports = {
     IceCandidate: IceCandidate
 };
 
-},{}],3:[function(require,module,exports){
+},{}],2:[function(require,module,exports){
 // getUserMedia helper by @HenrikJoreteg
 var func = (navigator.getUserMedia ||
             navigator.webkitGetUserMedia ||
@@ -537,7 +538,7 @@ module.exports = function (constraints, cb) {
     });
 };
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based 
 on @visionmedia's Emitter from UI Kit.
@@ -2771,7 +2772,7 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var _ = require('underscore');
 var util = require('util');
 var webrtc = require('webrtcsupport');
@@ -3132,7 +3133,7 @@ PeerConnection.prototype.createDataChannel = function (name, opts) {
 
 module.exports = PeerConnection;
 
-},{"sdp-jingle-json":15,"traceablepeerconnection":14,"underscore":12,"util":10,"webrtcsupport":2,"wildemitter":13}],7:[function(require,module,exports){
+},{"sdp-jingle-json":15,"traceablepeerconnection":14,"underscore":12,"util":10,"webrtcsupport":3,"wildemitter":13}],7:[function(require,module,exports){
 var support = require('webrtcsupport');
 
 
@@ -3179,7 +3180,7 @@ GainController.prototype.on = function () {
 
 module.exports = GainController;
 
-},{"webrtcsupport":2}],16:[function(require,module,exports){
+},{"webrtcsupport":3}],16:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -3984,7 +3985,7 @@ TraceablePeerConnection.prototype.getStats = function (callback, errback) {
 
 module.exports = TraceablePeerConnection;
 
-},{"util":10,"webrtcsupport":2,"wildemitter":13}],19:[function(require,module,exports){
+},{"util":10,"webrtcsupport":3,"wildemitter":13}],19:[function(require,module,exports){
 exports.lines = function (sdp) {
     return sdp.split('\r\n').filter(function (line) {
         return line.length > 0;
