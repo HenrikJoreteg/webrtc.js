@@ -406,6 +406,7 @@ Peer.prototype.start = function () {
 
 Peer.prototype.end = function () {
     this.pc.close();
+    this.handleStreamRemoved();
 };
 
 Peer.prototype.handleRemoteStreamAdded = function (event) {
@@ -415,7 +416,7 @@ Peer.prototype.handleRemoteStreamAdded = function (event) {
     } else {
         this.stream = event.stream;
         this.stream.onended = function () {
-            self.handleStreamRemoved();
+            self.end();
         };
         this.parent.emit('peerStreamAdded', this);
     }
