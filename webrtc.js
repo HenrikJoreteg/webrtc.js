@@ -405,6 +405,7 @@ Peer.prototype.start = function () {
 };
 
 Peer.prototype.end = function () {
+    if (this.closed) return;
     this.pc.close();
     this.handleStreamRemoved();
 };
