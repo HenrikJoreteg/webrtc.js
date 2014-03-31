@@ -179,9 +179,11 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
             if (self.hardMuted) return;
             self.emit('volumeChange', volume, treshold);
             self.peers.forEach(function (peer) {
-                var dc = peer.getDataChannel('hark');
-                if (dc.readyState != 'open') return;
-                dc.send(JSON.stringify({type: 'volume', volume: volume }));
+                if (peer.enableDataChannels) {
+                    var dc = peer.getDataChannel('hark');
+                    if (dc.readyState != 'open') return;
+                    dc.send(JSON.stringify({type: 'volume', volume: volume }));
+                }
             });
         });
     }
@@ -447,7 +449,7 @@ Peer.prototype.handleDataChannelAdded = function (channel) {
 
 module.exports = WebRTC;
 
-},{"getusermedia":3,"hark":6,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
+},{"getusermedia":3,"hark":4,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":5,"webrtcsupport":2,"wildemitter":6}],2:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var isChrome = false;
@@ -549,7 +551,7 @@ module.exports = function (constraints, cb) {
     });
 };
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based 
 on @visionmedia's Emitter from UI Kit.
@@ -698,7 +700,7 @@ while (l--) {
 
 module.exports = mockconsole;
 
-},{}],6:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 
 function getMaxVolume (analyser, fftBins) {
@@ -2783,7 +2785,7 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 var _ = require('underscore');
 var util = require('util');
 var webrtc = require('webrtcsupport');

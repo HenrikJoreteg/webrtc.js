@@ -177,9 +177,11 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
             if (self.hardMuted) return;
             self.emit('volumeChange', volume, treshold);
             self.peers.forEach(function (peer) {
-                var dc = peer.getDataChannel('hark');
-                if (dc.readyState != 'open') return;
-                dc.send(JSON.stringify({type: 'volume', volume: volume }));
+                if (peer.enableDataChannels) {
+                    var dc = peer.getDataChannel('hark');
+                    if (dc.readyState != 'open') return;
+                    dc.send(JSON.stringify({type: 'volume', volume: volume }));
+                }
             });
         });
     }
@@ -268,7 +270,7 @@ function Peer(options) {
     this.sharemyscreen = options.sharemyscreen || false;
     this.browserPrefix = options.prefix;
     this.stream = options.stream;
-    this.enableDataChannels = options.enableDataChannels || this.parent.config.enableDataChannels;
+    this.enableDataChannels = options.enableDataChannels === undefined ? this.parent.config.enableDataChannels : options.enableDataChannels;
     this.channels = {};
     // Create an RTCPeerConnection via the polyfill
     this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionContraints);
