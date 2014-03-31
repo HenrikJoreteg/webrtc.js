@@ -271,6 +271,7 @@ function Peer(options) {
     this.browserPrefix = options.prefix;
     this.stream = options.stream;
     this.enableDataChannels = options.enableDataChannels === undefined ? this.parent.config.enableDataChannels : options.enableDataChannels;
+    this.receiveMedia = options.receiveMedia || this.parent.config.receiveMedia;
     this.channels = {};
     // Create an RTCPeerConnection via the polyfill
     this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionContraints);
@@ -324,8 +325,8 @@ Peer.prototype.handleMessage = function (message) {
                 return;
             }
             // auto-accept
-            self.pc.answer(self.parent.config.receiveMedia, function (err, sessionDesc) {
-                self.send('answer', sessionDesc);
+            self.pc.answer(self.receiveMedia, function (err, sessionDescription) {
+                self.send('answer', sessionDescription);
             });
         });
     } else if (message.type === 'answer') {
@@ -410,7 +411,7 @@ Peer.prototype.start = function () {
         this.getDataChannel('simplewebrtc');
     }
 
-    this.pc.offer(this.parent.config.receiveMedia, function (err, sessionDescription) {
+    this.pc.offer(this.receiveMedia, function (err, sessionDescription) {
         self.send('offer', sessionDescription);
     });
 };
