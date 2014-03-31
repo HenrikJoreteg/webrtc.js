@@ -29,6 +29,12 @@ function WebRTC(opts) {
                 audio: true,
                 video: true
             },
+            receiveMedia: {
+                mandatory: {
+                    OfferToReceiveAudio: true,
+                    OfferToReceiveVideo: true
+                }
+            },
             detectSpeakingEvents: true,
             enableDataChannels: true
         };
@@ -260,6 +266,7 @@ function Peer(options) {
     this.sharemyscreen = options.sharemyscreen || false;
     this.browserPrefix = options.prefix;
     this.stream = options.stream;
+    this.enableDataChannels = options.enableDataChannels || this.parent.config.enableDataChannels;
     this.channels = {};
     // Create an RTCPeerConnection via the polyfill
     this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionContraints);
@@ -313,7 +320,7 @@ Peer.prototype.handleMessage = function (message) {
                 return;
             }
             // auto-accept
-            self.pc.answer(function (err, sessionDesc) {
+            self.pc.answer(self.parent.config.receiveMedia, function (err, sessionDesc) {
                 self.send('answer', sessionDesc);
             });
         });
@@ -395,11 +402,11 @@ Peer.prototype.start = function () {
     // a) create a datachannel a priori
     // b) do a renegotiation later to add the SCTP m-line
     // Let's do (a) first...
-    if (this.parent.config.enableDataChannels) {
+    if (this.enableDataChannels) {
         this.getDataChannel('simplewebrtc');
     }
 
-    this.pc.offer(function (err, sessionDescription) {
+    this.pc.offer(this.parent.config.receiveMedia, function (err, sessionDescription) {
         self.send('offer', sessionDescription);
     });
 };
