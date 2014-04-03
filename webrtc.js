@@ -396,6 +396,7 @@ Peer.prototype.onIceCandidate = function (candidate) {
     if (candidate) {
         this.send('candidate', candidate);
     } else {
+        this.send('end-of-candidates');
         this.logger.log("End of candidates.");
     }
 };
