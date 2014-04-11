@@ -176,6 +176,7 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
         audio.on('volume_change', function (volume, treshold) {
             if (self.hardMuted) return;
             self.emit('volumeChange', volume, treshold);
+            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
             self.peers.forEach(function (peer) {
                 if (peer.enableDataChannels) {
                     var dc = peer.getDataChannel('hark');
@@ -252,6 +253,7 @@ WebRTC.prototype.sendToAll = function (message, payload) {
 };
 
 // sends message to all using a datachannel
+// only sends to anyone who has an open datachannel
 WebRTC.prototype.sendDirectlyToAll = function (channel, message, payload) {
     this.peers.forEach(function (peer) {
         if (peer.enableDataChannels) {
@@ -359,13 +361,17 @@ Peer.prototype.send = function (messageType, payload) {
 };
 
 // send via data channel
+// returns true when message was sent and false if channel is not open
 Peer.prototype.sendDirectly = function (channel, messageType, payload) {
     var message = {
         type: messageType,
         payload: payload
     };
     this.logger.log('sending via datachannel', channel, messageType, message);
-    this.getDataChannel(channel).send(JSON.stringify(message));
+    var dc = this.getDataChannel(channel);
+    if (dc.readyState != 'open') return false;
+    dc.send(JSON.stringify(message));
+    return true;
 };
 
 // Internal method registering handlers for a data channel and emitting events on the peer
