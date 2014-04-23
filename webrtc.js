@@ -155,27 +155,27 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     var timeout;
 
     audio.on('speaking', function () {
+        self.emit('speaking');
         if (self.hardMuted) return;
         self.setMicIfEnabled(1);
         self.sendToAll('speaking', {});
-        self.emit('speaking');
     });
 
     audio.on('stopped_speaking', function () {
-        if (self.hardMuted) return;
         if (timeout) clearTimeout(timeout);
 
         timeout = setTimeout(function () {
+            self.emit('stoppedSpeaking');
+            if (self.hardMuted) return;
             self.setMicIfEnabled(0.5);
             self.sendToAll('stopped_speaking', {});
-            self.emit('stoppedSpeaking');
         }, 1000);
     });
     if (this.config.enableDataChannels) {
         // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
         audio.on('volume_change', function (volume, treshold) {
-            if (self.hardMuted) return;
             self.emit('volumeChange', volume, treshold);
+            if (self.hardMuted) return;
             // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
             self.peers.forEach(function (peer) {
                 if (peer.enableDataChannels) {

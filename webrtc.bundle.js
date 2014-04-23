@@ -157,27 +157,27 @@ WebRTC.prototype.setupAudioMonitor = function (stream) {
     var timeout;
 
     audio.on('speaking', function () {
+        self.emit('speaking');
         if (self.hardMuted) return;
         self.setMicIfEnabled(1);
         self.sendToAll('speaking', {});
-        self.emit('speaking');
     });
 
     audio.on('stopped_speaking', function () {
-        if (self.hardMuted) return;
         if (timeout) clearTimeout(timeout);
 
         timeout = setTimeout(function () {
+            self.emit('stoppedSpeaking');
+            if (self.hardMuted) return;
             self.setMicIfEnabled(0.5);
             self.sendToAll('stopped_speaking', {});
-            self.emit('stoppedSpeaking');
         }, 1000);
     });
     if (this.config.enableDataChannels) {
         // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
         audio.on('volume_change', function (volume, treshold) {
-            if (self.hardMuted) return;
             self.emit('volumeChange', volume, treshold);
+            if (self.hardMuted) return;
             // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
             self.peers.forEach(function (peer) {
                 if (peer.enableDataChannels) {
@@ -458,7 +458,7 @@ Peer.prototype.handleDataChannelAdded = function (channel) {
 
 module.exports = WebRTC;
 
-},{"getusermedia":3,"hark":6,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":4,"webrtcsupport":2,"wildemitter":5}],2:[function(require,module,exports){
+},{"getusermedia":3,"hark":6,"mediastream-gain":7,"mockconsole":8,"rtcpeerconnection":5,"webrtcsupport":2,"wildemitter":4}],2:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var isChrome = false;
@@ -496,7 +496,7 @@ module.exports = {
     IceCandidate: IceCandidate
 };
 
-},{}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based 
 on @visionmedia's Emitter from UI Kit.
@@ -2794,7 +2794,54 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],4:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
+var support = require('webrtcsupport');
+
+
+function GainController(stream) {
+    this.support = support.webAudio && support.mediaStream;
+
+    // set our starting value
+    this.gain = 1;
+
+    if (this.support) {
+        var context = this.context = new support.AudioContext();
+        this.microphone = context.createMediaStreamSource(stream);
+        this.gainFilter = context.createGain();
+        this.destination = context.createMediaStreamDestination();
+        this.outputStream = this.destination.stream;
+        this.microphone.connect(this.gainFilter);
+        this.gainFilter.connect(this.destination);
+        stream.removeTrack(stream.getAudioTracks()[0]);
+        stream.addTrack(this.outputStream.getAudioTracks()[0]);
+    }
+    this.stream = stream;
+}
+
+// setting
+GainController.prototype.setGain = function (val) {
+    // check for support
+    if (!this.support) return;
+    this.gainFilter.gain.value = val;
+    this.gain = val;
+};
+
+GainController.prototype.getGain = function () {
+    return this.gain;
+};
+
+GainController.prototype.off = function () {
+    return this.setGain(0);
+};
+
+GainController.prototype.on = function () {
+    this.setGain(1);
+};
+
+
+module.exports = GainController;
+
+},{"webrtcsupport":2}],5:[function(require,module,exports){
 var _ = require('underscore');
 var util = require('util');
 var webrtc = require('webrtcsupport');
@@ -3155,54 +3202,7 @@ PeerConnection.prototype.createDataChannel = function (name, opts) {
 
 module.exports = PeerConnection;
 
-},{"sdp-jingle-json":15,"traceablepeerconnection":14,"underscore":12,"util":10,"webrtcsupport":2,"wildemitter":13}],7:[function(require,module,exports){
-var support = require('webrtcsupport');
-
-
-function GainController(stream) {
-    this.support = support.webAudio && support.mediaStream;
-
-    // set our starting value
-    this.gain = 1;
-
-    if (this.support) {
-        var context = this.context = new support.AudioContext();
-        this.microphone = context.createMediaStreamSource(stream);
-        this.gainFilter = context.createGain();
-        this.destination = context.createMediaStreamDestination();
-        this.outputStream = this.destination.stream;
-        this.microphone.connect(this.gainFilter);
-        this.gainFilter.connect(this.destination);
-        stream.removeTrack(stream.getAudioTracks()[0]);
-        stream.addTrack(this.outputStream.getAudioTracks()[0]);
-    }
-    this.stream = stream;
-}
-
-// setting
-GainController.prototype.setGain = function (val) {
-    // check for support
-    if (!this.support) return;
-    this.gainFilter.gain.value = val;
-    this.gain = val;
-};
-
-GainController.prototype.getGain = function () {
-    return this.gain;
-};
-
-GainController.prototype.off = function () {
-    return this.setGain(0);
-};
-
-GainController.prototype.on = function () {
-    this.setGain(1);
-};
-
-
-module.exports = GainController;
-
-},{"webrtcsupport":2}],16:[function(require,module,exports){
+},{"sdp-jingle-json":15,"traceablepeerconnection":14,"underscore":12,"util":10,"webrtcsupport":2,"wildemitter":13}],16:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
