@@ -70,6 +70,16 @@ function WebRTC(opts) {
 
     // call localMedia constructor
     localMedia.call(this, this.config);
+    this.on('speaking', function () {
+        if (!self.hardMuted) {
+            self.sendToAll('speaking');
+        }
+    });
+    this.on('stoppedSpeaking', function () {
+        if (!self.hardMuted) {
+            self.sendToAll('stopped_speaking');
+        }
+    });
 
     // log events in debug mode
     if (this.config.debug) {
@@ -324,7 +334,7 @@ Peer.prototype.handleDataChannelAdded = function (channel) {
 
 module.exports = WebRTC;
 
-},{"localmedia":7,"mockconsole":6,"rtcpeerconnection":4,"util":2,"webrtcsupport":3,"wildemitter":5}],2:[function(require,module,exports){
+},{"localmedia":6,"mockconsole":5,"rtcpeerconnection":3,"util":2,"webrtcsupport":4,"wildemitter":7}],2:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -671,7 +681,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":8}],3:[function(require,module,exports){
+},{"events":8}],4:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var isChrome = false;
@@ -710,6 +720,18 @@ module.exports = {
 };
 
 },{}],5:[function(require,module,exports){
+var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
+var l = methods.length;
+var fn = function () {};
+var mockconsole = {};
+
+while (l--) {
+    mockconsole[methods[l]] = fn;
+}
+
+module.exports = mockconsole;
+
+},{}],7:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based 
 on @visionmedia's Emitter from UI Kit.
@@ -845,18 +867,6 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     }
     return result;
 };
-
-},{}],6:[function(require,module,exports){
-var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
-var l = methods.length;
-var fn = function () {};
-var mockconsole = {};
-
-while (l--) {
-    mockconsole[methods[l]] = fn;
-}
-
-module.exports = mockconsole;
 
 },{}],9:[function(require,module,exports){
 // shim for using process in browser
@@ -2596,6 +2606,70 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
 };
 
 },{}],12:[function(require,module,exports){
+// getUserMedia helper by @HenrikJoreteg
+var func = (navigator.getUserMedia ||
+            navigator.webkitGetUserMedia ||
+            navigator.mozGetUserMedia ||
+            navigator.msGetUserMedia);
+
+
+module.exports = function (constraints, cb) {
+    var options;
+    var haveOpts = arguments.length === 2;
+    var defaultOpts = {video: true, audio: true};
+    var error;
+    var denied = 'PERMISSION_DENIED';
+    var notSatified = 'CONSTRAINT_NOT_SATISFIED';
+
+    // make constraints optional
+    if (!haveOpts) {
+        cb = constraints;
+        constraints = defaultOpts;
+    }
+
+    // treat lack of browser support like an error
+    if (!func) {
+        // throw proper error per spec
+        error = new Error('NavigatorUserMediaError');
+        error.name = 'NOT_SUPPORTED_ERROR';
+        return cb(error);
+    }
+
+    func.call(navigator, constraints, function (stream) {
+        cb(null, stream);
+    }, function (err) {
+        var error;
+        // coerce into an error object since FF gives us a string
+        // there are only two valid names according to the spec
+        // we coerce all non-denied to "constraint not satisfied".
+        if (typeof err === 'string') {
+            error = new Error('NavigatorUserMediaError');
+            if (err === denied) {
+                error.name = denied;
+            } else {
+                error.name = notSatified;
+            }
+        } else {
+            // if we get an error object make sure '.name' property is set
+            // according to spec: http://dev.w3.org/2011/webrtc/editor/getusermedia.html#navigatorusermediaerror-and-navigatorusermediaerrorcallback
+            error = err;
+            if (!error.name) {
+                // this is likely chrome which
+                // sets a property called "ERROR_DENIED" on the error object
+                // if so we make sure to set a name
+                if (error[denied]) {
+                    err.name = denied;
+                } else {
+                    err.name = notSatified;
+                }
+            }
+        }
+
+        cb(error);
+    });
+};
+
+},{}],13:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based 
 on @visionmedia's Emitter from UI Kit.
@@ -2736,71 +2810,7 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],13:[function(require,module,exports){
-// getUserMedia helper by @HenrikJoreteg
-var func = (navigator.getUserMedia ||
-            navigator.webkitGetUserMedia ||
-            navigator.mozGetUserMedia ||
-            navigator.msGetUserMedia);
-
-
-module.exports = function (constraints, cb) {
-    var options;
-    var haveOpts = arguments.length === 2;
-    var defaultOpts = {video: true, audio: true};
-    var error;
-    var denied = 'PERMISSION_DENIED';
-    var notSatified = 'CONSTRAINT_NOT_SATISFIED';
-
-    // make constraints optional
-    if (!haveOpts) {
-        cb = constraints;
-        constraints = defaultOpts;
-    }
-
-    // treat lack of browser support like an error
-    if (!func) {
-        // throw proper error per spec
-        error = new Error('NavigatorUserMediaError');
-        error.name = 'NOT_SUPPORTED_ERROR';
-        return cb(error);
-    }
-
-    func.call(navigator, constraints, function (stream) {
-        cb(null, stream);
-    }, function (err) {
-        var error;
-        // coerce into an error object since FF gives us a string
-        // there are only two valid names according to the spec
-        // we coerce all non-denied to "constraint not satisfied".
-        if (typeof err === 'string') {
-            error = new Error('NavigatorUserMediaError');
-            if (err === denied) {
-                error.name = denied;
-            } else {
-                error.name = notSatified;
-            }
-        } else {
-            // if we get an error object make sure '.name' property is set
-            // according to spec: http://dev.w3.org/2011/webrtc/editor/getusermedia.html#navigatorusermediaerror-and-navigatorusermediaerrorcallback
-            error = err;
-            if (!error.name) {
-                // this is likely chrome which
-                // sets a property called "ERROR_DENIED" on the error object
-                // if so we make sure to set a name
-                if (error[denied]) {
-                    err.name = denied;
-                } else {
-                    err.name = notSatified;
-                }
-            }
-        }
-
-        cb(error);
-    });
-};
-
-},{}],4:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 var _ = require('underscore');
 var util = require('util');
 var webrtc = require('webrtcsupport');
@@ -3163,7 +3173,7 @@ PeerConnection.prototype.createDataChannel = function (name, opts) {
 
 module.exports = PeerConnection;
 
-},{"sdp-jingle-json":14,"traceablepeerconnection":15,"underscore":10,"util":2,"webrtcsupport":3,"wildemitter":11}],7:[function(require,module,exports){
+},{"sdp-jingle-json":14,"traceablepeerconnection":15,"underscore":10,"util":2,"webrtcsupport":4,"wildemitter":11}],6:[function(require,module,exports){
 var util = require('util');
 var hark = require('hark');
 var webrtc = require('webrtcsupport');
@@ -3204,9 +3214,14 @@ function LocalMedia(opts) {
     this.localScreens = [];
 }
 
-
 util.inherits(LocalMedia, WildEmitter);
 
+// fallback for old .localStream behaviour
+Object.defineProperty(LocalMedia.prototype, 'localStream', 
+    { get: function () {
+        return this.localStreams.length > 0 ? this.localStreams[0] : null;
+    }
+});
 
 LocalMedia.prototype.startLocalMedia = function (mediaConstraints, cb) {
     var self = this;
@@ -3377,7 +3392,7 @@ LocalMedia.prototype._videoEnabled = function (bool) {
 
 module.exports = LocalMedia;
 
-},{"getscreenmedia":17,"getusermedia":13,"hark":16,"mediastream-gain":18,"mockconsole":6,"util":2,"webrtcsupport":3,"wildemitter":12}],14:[function(require,module,exports){
+},{"getscreenmedia":17,"getusermedia":12,"hark":16,"mediastream-gain":18,"mockconsole":5,"util":2,"webrtcsupport":4,"wildemitter":13}],14:[function(require,module,exports){
 var tosdp = require('./lib/tosdp');
 var tojson = require('./lib/tojson');
 
@@ -4062,7 +4077,7 @@ window.addEventListener('message', function (event) {
     }
 });
 
-},{"getusermedia":13}],22:[function(require,module,exports){
+},{"getusermedia":12}],22:[function(require,module,exports){
 exports.lines = function (sdp) {
     return sdp.split('\r\n').filter(function (line) {
         return line.length > 0;
@@ -4497,7 +4512,7 @@ TraceablePeerConnection.prototype.getStats = function (callback, errback) {
 
 module.exports = TraceablePeerConnection;
 
-},{"util":2,"webrtcsupport":3,"wildemitter":11}],18:[function(require,module,exports){
+},{"util":2,"webrtcsupport":4,"wildemitter":11}],18:[function(require,module,exports){
 var support = require('webrtcsupport');
 
 
@@ -4544,6 +4559,6 @@ GainController.prototype.on = function () {
 
 module.exports = GainController;
 
-},{"webrtcsupport":3}]},{},[1])(1)
+},{"webrtcsupport":4}]},{},[1])(1)
 });
 ;

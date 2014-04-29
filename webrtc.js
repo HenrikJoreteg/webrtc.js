@@ -68,6 +68,16 @@ function WebRTC(opts) {
 
     // call localMedia constructor
     localMedia.call(this, this.config);
+    this.on('speaking', function () {
+        if (!self.hardMuted) {
+            self.sendToAll('speaking');
+        }
+    });
+    this.on('stoppedSpeaking', function () {
+        if (!self.hardMuted) {
+            self.sendToAll('stopped_speaking');
+        }
+    });
 
     // log events in debug mode
     if (this.config.debug) {
