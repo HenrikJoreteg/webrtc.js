@@ -68,6 +68,7 @@ function WebRTC(opts) {
 
     // call localMedia constructor
     localMedia.call(this, this.config);
+
     this.on('speaking', function () {
         if (!self.hardMuted) {
             self.sendToAll('speaking');
@@ -76,6 +77,18 @@ function WebRTC(opts) {
     this.on('stoppedSpeaking', function () {
         if (!self.hardMuted) {
             self.sendToAll('stopped_speaking');
+        }
+    });
+    this.on('volumeChange', function (volume, treshold) {
+        if (!self.hardMuted) {
+            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
+            self.peers.forEach(function (peer) {
+                if (peer.enableDataChannels) {
+                    var dc = peer.getDataChannel('hark');
+                    if (dc.readyState != 'open') return;
+                    dc.send(JSON.stringify({type: 'volume', volume: volume }));
+                }
+            });
         }
     });
 
