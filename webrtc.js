@@ -11,9 +11,6 @@ function WebRTC(opts) {
     var options = opts || {};
     var config = this.config = {
             debug: false,
-            localVideoEl: '',
-            remoteVideosEl: '',
-            autoRequestMedia: false,
             // makes the entire PC config overridable
             peerConnectionConfig: {
                 iceServers: [{"url": "stun:stun.l.google.com:19302"}]
