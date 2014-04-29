@@ -1,10 +1,9 @@
+var util = require('util');
 var webrtc = require('webrtcsupport');
-var getUserMedia = require('getusermedia');
 var PeerConnection = require('rtcpeerconnection');
 var WildEmitter = require('wildemitter');
-var hark = require('hark');
-var GainController = require('mediastream-gain');
 var mockconsole = require('mockconsole');
+var localMedia = require('localmedia');
 
 
 function WebRTC(opts) {
@@ -24,18 +23,12 @@ function WebRTC(opts) {
                     {DtlsSrtpKeyAgreement: true}
                 ]
             },
-            autoAdjustMic: false,
-            media: {
-                audio: true,
-                video: true
-            },
             receiveMedia: {
                 mandatory: {
                     OfferToReceiveAudio: true,
                     OfferToReceiveVideo: true
                 }
             },
-            detectSpeakingEvents: true,
             enableDataChannels: true
         };
     var item, connection;
@@ -73,7 +66,8 @@ function WebRTC(opts) {
     // where we'll store our peer connections
     this.peers = [];
 
-    WildEmitter.call(this);
+    // call localMedia constructor
+    localMedia.call(this, this.config);
 
     // log events in debug mode
     if (this.config.debug) {
@@ -91,11 +85,7 @@ function WebRTC(opts) {
     }
 }
 
-WebRTC.prototype = Object.create(WildEmitter.prototype, {
-    constructor: {
-        value: WebRTC
-    }
-});
+util.inherits(WebRTC, localMedia);
 
 WebRTC.prototype.createPeer = function (opts) {
     var peer;
@@ -103,132 +93,6 @@ WebRTC.prototype.createPeer = function (opts) {
     peer = new Peer(opts);
     this.peers.push(peer);
     return peer;
-};
-
-WebRTC.prototype.startLocalMedia = function (mediaConstraints, cb) {
-    var self = this;
-    var constraints = mediaConstraints || {video: true, audio: true};
-
-    getUserMedia(constraints, function (err, stream) {
-        if (!err) {
-            if (constraints.audio && self.config.detectSpeakingEvents) {
-                self.setupAudioMonitor(stream);
-            }
-            self.localStream = stream;
-
-            if (self.config.autoAdjustMic) {
-                self.gainController = new GainController(stream);
-                // start out somewhat muted if we can track audio
-                self.setMicIfEnabled(0.5);
-            }
-
-            self.emit('localStream', stream);
-        }
-        if (cb) cb(err, stream);
-    });
-};
-
-WebRTC.prototype.stopLocalMedia = function () {
-    if (this.localStream) {
-        this.localStream.stop();
-        this.emit('localStreamStopped');
-    }
-};
-
-// Audio controls
-WebRTC.prototype.mute = function () {
-    this._audioEnabled(false);
-    this.hardMuted = true;
-    this.emit('audioOff');
-};
-WebRTC.prototype.unmute = function () {
-    this._audioEnabled(true);
-    this.hardMuted = false;
-    this.emit('audioOn');
-};
-
-// Audio monitor
-WebRTC.prototype.setupAudioMonitor = function (stream) {
-    this.logger.log('Setup audio');
-    var audio = hark(stream);
-    var self = this;
-    var timeout;
-
-    audio.on('speaking', function () {
-        self.emit('speaking');
-        if (self.hardMuted) return;
-        self.setMicIfEnabled(1);
-        self.sendToAll('speaking', {});
-    });
-
-    audio.on('stopped_speaking', function () {
-        if (timeout) clearTimeout(timeout);
-
-        timeout = setTimeout(function () {
-            self.emit('stoppedSpeaking');
-            if (self.hardMuted) return;
-            self.setMicIfEnabled(0.5);
-            self.sendToAll('stopped_speaking', {});
-        }, 1000);
-    });
-    if (this.config.enableDataChannels) {
-        // until https://code.google.com/p/chromium/issues/detail?id=121673 is fixed...
-        audio.on('volume_change', function (volume, treshold) {
-            self.emit('volumeChange', volume, treshold);
-            if (self.hardMuted) return;
-            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
-            self.peers.forEach(function (peer) {
-                if (peer.enableDataChannels) {
-                    var dc = peer.getDataChannel('hark');
-                    if (dc.readyState != 'open') return;
-                    dc.send(JSON.stringify({type: 'volume', volume: volume }));
-                }
-            });
-        });
-    }
-};
-
-// We do this as a seperate method in order to
-// still leave the "setMicVolume" as a working
-// method.
-WebRTC.prototype.setMicIfEnabled = function (volume) {
-    if (!this.config.autoAdjustMic) return;
-    this.gainController.setGain(volume);
-};
-
-// Video controls
-WebRTC.prototype.pauseVideo = function () {
-    this._videoEnabled(false);
-    this.emit('videoOff');
-};
-WebRTC.prototype.resumeVideo = function () {
-    this._videoEnabled(true);
-    this.emit('videoOn');
-};
-
-// Combined controls
-WebRTC.prototype.pause = function () {
-    this._audioEnabled(false);
-    this.pauseVideo();
-};
-WebRTC.prototype.resume = function () {
-    this._audioEnabled(true);
-    this.resumeVideo();
-};
-
-// Internal methods for enabling/disabling audio/video
-WebRTC.prototype._audioEnabled = function (bool) {
-    // work around for chrome 27 bug where disabling tracks
-    // doesn't seem to work (works in canary, remove when working)
-    this.setMicIfEnabled(bool ? 1 : 0);
-    this.localStream.getAudioTracks().forEach(function (track) {
-        track.enabled = !!bool;
-    });
-};
-WebRTC.prototype._videoEnabled = function (bool) {
-    this.localStream.getVideoTracks().forEach(function (track) {
-        track.enabled = !!bool;
-    });
 };
 
 // removes peers
@@ -298,7 +162,9 @@ function Peer(options) {
             this.broadcaster = options.broadcaster;
         }
     } else {
-        this.pc.addStream(this.parent.localStream);
+        this.parent.localStreams.forEach(function (stream) {
+            self.pc.addStream(stream);
+        });
     }
 
     // call emitter constructor
