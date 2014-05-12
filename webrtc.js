@@ -171,6 +171,17 @@ function Peer(options) {
     // automatically. We'll just leave it be for now while this stabalizes.
     this.pc.on('negotiationNeeded', this.emit.bind(this, 'negotiationNeeded'));
     this.pc.on('iceConnectionStateChange', this.emit.bind(this, 'iceConnectionStateChange'));
+    this.pc.on('iceConnectionStateChange', function () {
+        switch (self.pc.iceConnectionState) {
+        case 'failed':
+            // currently, in chrome only the initiator goes to failed
+            // so we need to signal this to the peer
+            if (self.pc.config.isInitiator) {
+                self.parent.emit('iceFailed', {id: self.id});
+            }
+            break;
+        }
+    });
     this.pc.on('signalingStateChange', this.emit.bind(this, 'signalingStateChange'));
     this.logger = this.parent.logger;
 
