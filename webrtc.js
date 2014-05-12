@@ -28,7 +28,7 @@ function WebRTC(opts) {
             },
             enableDataChannels: true
         };
-    var item, connection;
+    var item;
 
     // expose screensharing check
     this.screenSharingSupport = webrtc.screenSharing;
