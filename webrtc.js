@@ -333,6 +333,8 @@ Peer.prototype.handleRemoteStreamAdded = function (event) {
         this.logger.warn('Already have a remote stream');
     } else {
         this.stream = event.stream;
+        // FIXME: addEventListener('ended', ...) would be nicer
+        // but does not work in firefox 
         this.stream.onended = function () {
             self.end();
         };
