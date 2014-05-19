@@ -177,7 +177,8 @@ function Peer(options) {
             // currently, in chrome only the initiator goes to failed
             // so we need to signal this to the peer
             if (self.pc.config.isInitiator) {
-                self.parent.emit('iceFailed', {id: self.id});
+                self.parent.emit('iceFailed', self);
+                self.send('connectivityError');
             }
             break;
         }
@@ -234,6 +235,8 @@ Peer.prototype.handleMessage = function (message) {
         this.pc.handleAnswer(message.payload);
     } else if (message.type === 'candidate') {
         this.pc.processIce(message.payload);
+    } else if (message.type === 'connectivityError') {
+        this.parent.emit('connectivityError', self);
     } else if (message.type === 'speaking') {
         this.parent.emit('speaking', {id: message.from});
     } else if (message.type === 'stopped_speaking') {

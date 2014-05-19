@@ -179,7 +179,8 @@ function Peer(options) {
             // currently, in chrome only the initiator goes to failed
             // so we need to signal this to the peer
             if (self.pc.config.isInitiator) {
-                self.parent.emit('iceFailed', {id: self.id});
+                self.parent.emit('iceFailed', self);
+                self.send('connectivityError');
             }
             break;
         }
@@ -236,6 +237,8 @@ Peer.prototype.handleMessage = function (message) {
         this.pc.handleAnswer(message.payload);
     } else if (message.type === 'candidate') {
         this.pc.processIce(message.payload);
+    } else if (message.type === 'connectivityError') {
+        this.parent.emit('connectivityError', self);
     } else if (message.type === 'speaking') {
         this.parent.emit('speaking', {id: message.from});
     } else if (message.type === 'stopped_speaking') {
@@ -357,7 +360,7 @@ Peer.prototype.handleDataChannelAdded = function (channel) {
 
 module.exports = WebRTC;
 
-},{"localmedia":7,"mockconsole":6,"rtcpeerconnection":5,"util":2,"webrtcsupport":3,"wildemitter":4}],2:[function(require,module,exports){
+},{"localmedia":7,"mockconsole":6,"rtcpeerconnection":4,"util":2,"webrtcsupport":3,"wildemitter":5}],2:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -742,7 +745,7 @@ module.exports = {
     IceCandidate: IceCandidate
 };
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based 
 on @visionmedia's Emitter from UI Kit.
@@ -2833,7 +2836,7 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     return result;
 };
 
-},{}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var _ = require('underscore');
 var util = require('util');
 var webrtc = require('webrtcsupport');
