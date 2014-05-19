@@ -14,7 +14,7 @@
   "dependencies": {
     "webrtcsupport": "0.7.1",
     "wildemitter": "0.0.5",
-    "rtcpeerconnection": "2.1.x",
+    "rtcpeerconnection": "2.3.x",
     "localmedia": "0.0.9",
     "mockconsole": "0.0.1"
   },
