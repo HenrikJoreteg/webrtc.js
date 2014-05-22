@@ -176,7 +176,7 @@ function Peer(options) {
         case 'failed':
             // currently, in chrome only the initiator goes to failed
             // so we need to signal this to the peer
-            if (self.pc.config.isInitiator) {
+            if (self.pc.pc.peerconnection.localDescription.type === 'offer') {
                 self.parent.emit('iceFailed', self);
                 self.send('connectivityError');
             }
