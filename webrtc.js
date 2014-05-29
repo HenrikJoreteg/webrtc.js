@@ -68,12 +68,26 @@ function WebRTC(opts) {
 
     this.on('speaking', function () {
         if (!self.hardMuted) {
-            self.sendToAll('speaking');
+            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
+            self.peers.forEach(function (peer) {
+                if (peer.enableDataChannels) {
+                    var dc = peer.getDataChannel('hark');
+                    if (dc.readyState != 'open') return;
+                    dc.send(JSON.stringify({type: 'speaking'}));
+                }
+            });
         }
     });
     this.on('stoppedSpeaking', function () {
         if (!self.hardMuted) {
-            self.sendToAll('stopped_speaking');
+            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
+            self.peers.forEach(function (peer) {
+                if (peer.enableDataChannels) {
+                    var dc = peer.getDataChannel('hark');
+                    if (dc.readyState != 'open') return;
+                    dc.send(JSON.stringify({type: 'stoppedSpeaking'}));
+                }
+            });
         }
     });
     this.on('volumeChange', function (volume, treshold) {
@@ -237,10 +251,6 @@ Peer.prototype.handleMessage = function (message) {
         this.pc.processIce(message.payload);
     } else if (message.type === 'connectivityError') {
         this.parent.emit('connectivityError', self);
-    } else if (message.type === 'speaking') {
-        this.parent.emit('speaking', {id: message.from});
-    } else if (message.type === 'stopped_speaking') {
-        this.parent.emit('stopped_speaking', {id: message.from});
     } else if (message.type === 'mute') {
         this.parent.emit('mute', {id: message.from, name: message.payload.name});
     } else if (message.type === 'unmute') {
