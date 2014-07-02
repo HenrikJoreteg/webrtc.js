@@ -18,7 +18,7 @@ function Peer(options) {
     this.receiveMedia = options.receiveMedia || this.parent.config.receiveMedia;
     this.channels = {};
     // Create an RTCPeerConnection via the polyfill
-    this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionContraints);
+    this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionConstraints);
     this.pc.on('ice', this.onIceCandidate.bind(this));
     this.pc.on('addStream', this.handleRemoteStreamAdded.bind(this));
     this.pc.on('addChannel', this.handleDataChannelAdded.bind(this));
