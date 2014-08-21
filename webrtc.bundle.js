@@ -511,12 +511,24 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":8}],4:[function(require,module,exports){
+},{"events":8}],6:[function(require,module,exports){
+var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
+var l = methods.length;
+var fn = function () {};
+var mockconsole = {};
+
+while (l--) {
+    mockconsole[methods[l]] = fn;
+}
+
+module.exports = mockconsole;
+
+},{}],4:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var isChrome = false;
 var isFirefox = false;
-var ua = navigator.userAgent.toLowerCase();
+var ua = window.navigator.userAgent.toLowerCase();
 
 // basic sniffing
 if (ua.indexOf('firefox') !== -1) {
@@ -531,7 +543,9 @@ var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
 var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
 var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
 var MediaStream = window.webkitMediaStream || window.MediaStream;
-var screenSharing = navigator.userAgent.match('Chrome') && parseInt(navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
+var screenSharing = window.location.protocol === 'https:' && 
+    ((window.navigator.userAgent.match('Chrome') && parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26) ||
+     (window.navigator.userAgent.match('Firefox') && parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10) >= 33));
 var AudioContext = window.webkitAudioContext || window.AudioContext;
 
 
@@ -689,18 +703,6 @@ WildEmitter.prototype.getWildcardCallbacks = function (eventName) {
     }
     return result;
 };
-
-},{}],6:[function(require,module,exports){
-var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
-var l = methods.length;
-var fn = function () {};
-var mockconsole = {};
-
-while (l--) {
-    mockconsole[methods[l]] = fn;
-}
-
-module.exports = mockconsole;
 
 },{}],9:[function(require,module,exports){
 // shim for using process in browser
@@ -1177,8 +1179,8 @@ module.exports = function (constraints, cb) {
     var haveOpts = arguments.length === 2;
     var defaultOpts = {video: true, audio: true};
     var error;
-    var denied = 'PERMISSION_DENIED';
-    var notSatified = 'CONSTRAINT_NOT_SATISFIED';
+    var denied = 'PermissionDeniedError';
+    var notSatified = 'ConstraintNotSatisfiedError';
 
     // make constraints optional
     if (!haveOpts) {
@@ -1189,8 +1191,8 @@ module.exports = function (constraints, cb) {
     // treat lack of browser support like an error
     if (!func) {
         // throw proper error per spec
-        error = new Error('NavigatorUserMediaError');
-        error.name = 'NOT_SUPPORTED_ERROR';
+        error = new Error('MediaStreamError');
+        error.name = 'NotSupportedError';
         return cb(error);
     }
 
@@ -1202,7 +1204,7 @@ module.exports = function (constraints, cb) {
         // there are only two valid names according to the spec
         // we coerce all non-denied to "constraint not satisfied".
         if (typeof err === 'string') {
-            error = new Error('NavigatorUserMediaError');
+            error = new Error('MediaStreamError');
             if (err === denied) {
                 error.name = denied;
             } else {
@@ -1506,439 +1508,7 @@ Object.defineProperty(LocalMedia.prototype, 'localScreen', {
 
 module.exports = LocalMedia;
 
-},{"getscreenmedia":13,"getusermedia":11,"hark":12,"mediastream-gain":14,"mockconsole":6,"util":2,"webrtcsupport":4,"wildemitter":5}],10:[function(require,module,exports){
-var _ = require('underscore');
-var util = require('util');
-var webrtc = require('webrtcsupport');
-var SJJ = require('sdp-jingle-json');
-var WildEmitter = require('wildemitter');
-var peerconn = require('traceablepeerconnection');
-
-function PeerConnection(config, constraints) {
-    var self = this;
-    var item;
-    WildEmitter.call(this);
-
-    config = config || {};
-    config.iceServers = config.iceServers || [];
-
-    this.pc = new peerconn(config, constraints);
-
-    this.getLocalStreams = this.pc.getLocalStreams.bind(this.pc);
-    this.getRemoteStreams = this.pc.getRemoteStreams.bind(this.pc);
-    this.addStream = this.pc.addStream.bind(this.pc);
-    this.removeStream = this.pc.removeStream.bind(this.pc);
-
-    // proxy events 
-    this.pc.on('*', function () {
-        self.emit.apply(self, arguments);
-    });
-
-    // proxy some events directly
-    this.pc.onremovestream = this.emit.bind(this, 'removeStream');
-    this.pc.onnegotiationneeded = this.emit.bind(this, 'negotiationNeeded');
-    this.pc.oniceconnectionstatechange = this.emit.bind(this, 'iceConnectionStateChange');
-    this.pc.onsignalingstatechange = this.emit.bind(this, 'signalingStateChange');
-
-    // handle incoming ice and data channel events
-    this.pc.onaddstream = this._onAddStream.bind(this);
-    this.pc.onicecandidate = this._onIce.bind(this);
-    this.pc.ondatachannel = this._onDataChannel.bind(this);
-
-    this.localDescription = {
-        contents: []
-    };
-    this.remoteDescription = {
-        contents: []
-    };
-
-    this.localStream = null;
-    this.remoteStreams = [];
-
-    this.config = {
-        debug: false,
-        ice: {},
-        sid: '',
-        isInitiator: true,
-        sdpSessionID: Date.now(),
-        useJingle: false
-    };
-
-    // apply our config
-    for (item in config) {
-        this.config[item] = config[item];
-    }
-
-    if (this.config.debug) {
-        this.on('*', function (eventName, event) {
-            var logger = config.logger || console;
-            logger.log('PeerConnection event:', arguments);
-        });
-    }
-    this.hadLocalStunCandidate = false;
-    this.hadRemoteStunCandidate = false;
-    this.hadLocalRelayCandidate = false;
-    this.hadRemoteRelayCandidate = false;
-}
-
-util.inherits(PeerConnection, WildEmitter);
-
-Object.defineProperty(PeerConnection.prototype, 'signalingState', {
-    get: function () {
-        return this.pc.signalingState;
-    }
-});
-Object.defineProperty(PeerConnection.prototype, 'iceConnectionState', {
-    get: function () {
-        return this.pc.iceConnectionState;
-    }
-});
-
-// Add a stream to the peer connection object
-PeerConnection.prototype.addStream = function (stream) {
-    this.localStream = stream;
-    this.pc.addStream(stream);
-};
-
-
-// Init and add ice candidate object with correct constructor
-PeerConnection.prototype.processIce = function (update, cb) {
-    cb = cb || function () {};
-    var self = this;
-
-    if (update.contents) {
-        var contentNames = _.pluck(this.remoteDescription.contents, 'name');
-        var contents = update.contents;
-
-        contents.forEach(function (content) {
-            var transport = content.transport || {};
-            var candidates = transport.candidates || [];
-            var mline = contentNames.indexOf(content.name);
-            var mid = content.name;
-
-            candidates.forEach(function (candidate) {
-                var iceCandidate = SJJ.toCandidateSDP(candidate) + '\r\n';
-                self.pc.addIceCandidate(new webrtc.IceCandidate({
-                    candidate: iceCandidate,
-                    sdpMLineIndex: mline,
-                    sdpMid: mid
-                })
-                /* not yet, breaks Chrome M32 */
-                /*
-                , function () {
-                    // well, this success callback is pretty meaningless
-                },
-                function (err) {
-                    self.emit('error', err);
-                }
-                */
-                );
-                if (candidate.type === 'srflx') {
-                    self.hadRemoteStunCandidate = true;
-                }
-                else if (candidate.type === 'relay') {
-                    self.hadRemoteRelayCandidate = true;
-                }
-            });
-        });
-    } else {
-        // working around https://code.google.com/p/webrtc/issues/detail?id=3669
-        if (update.candidate.candidate.indexOf('a=') !== 0) {
-            update.candidate.candidate = 'a=' + update.candidate.candidate;
-        }
-
-        self.pc.addIceCandidate(new webrtc.IceCandidate(update.candidate));
-        if (update.candidate.candidate.indexOf('typ srflx') !== -1) {
-            self.hadRemoteStunCandidate = true;
-        }
-        else if (update.candidate.candidate.indexOf('typ relay') !== -1) {
-            self.hadRemoteRelayCandidate = true;
-        }
-    }
-    cb();
-};
-
-// Generate and emit an offer with the given constraints
-PeerConnection.prototype.offer = function (constraints, cb) {
-    var self = this;
-    var hasConstraints = arguments.length === 2;
-    var mediaConstraints = hasConstraints ? constraints : {
-            mandatory: {
-                OfferToReceiveAudio: true,
-                OfferToReceiveVideo: true
-            }
-        };
-    cb = hasConstraints ? cb : constraints;
-    cb = cb || function () {};
-
-    // Actually generate the offer
-    this.pc.createOffer(
-        function (offer) {
-            self.pc.setLocalDescription(offer,
-                function () {
-                    var jingle;
-                    var expandedOffer = {
-                        type: 'offer',
-                        sdp: offer.sdp
-                    };
-                    if (self.config.useJingle) {
-                        jingle = SJJ.toSessionJSON(offer.sdp, self.config.isInitiator ? 'initiator' : 'responder');
-                        jingle.sid = self.config.sid;
-                        self.localDescription = jingle;
-
-                        // Save ICE credentials
-                        _.each(jingle.contents, function (content) {
-                            var transport = content.transport || {};
-                            if (transport.ufrag) {
-                                self.config.ice[content.name] = {
-                                    ufrag: transport.ufrag,
-                                    pwd: transport.pwd
-                                };
-                            }
-                        });
-
-                        expandedOffer.jingle = jingle;
-                    }
-
-                    self.emit('offer', expandedOffer);
-                    cb(null, expandedOffer);
-                },
-                function (err) {
-                    self.emit('error', err);
-                    cb(err);
-                }
-            );
-        },
-        function (err) {
-            self.emit('error', err);
-            cb(err);
-        },
-        mediaConstraints
-    );
-};
-
-
-// Process an incoming offer so that ICE may proceed before deciding
-// to answer the request.
-PeerConnection.prototype.handleOffer = function (offer, cb) {
-    cb = cb || function () {};
-    var self = this;
-    offer.type = 'offer';
-    if (offer.jingle) {
-        offer.sdp = SJJ.toSessionSDP(offer.jingle, self.config.sdpSessionID);
-        self.remoteDescription = offer.jingle;
-    }
-    self.pc.setRemoteDescription(new webrtc.SessionDescription(offer), function () {
-        cb();
-    }, cb);
-};
-
-// Answer an offer with audio only
-PeerConnection.prototype.answerAudioOnly = function (cb) {
-    var mediaConstraints = {
-            mandatory: {
-                OfferToReceiveAudio: true,
-                OfferToReceiveVideo: false
-            }
-        };
-    this._answer(mediaConstraints, cb);
-};
-
-// Answer an offer without offering to recieve
-PeerConnection.prototype.answerBroadcastOnly = function (cb) {
-    var mediaConstraints = {
-            mandatory: {
-                OfferToReceiveAudio: false,
-                OfferToReceiveVideo: false
-            }
-        };
-    this._answer(mediaConstraints, cb);
-};
-
-// Answer an offer with given constraints default is audio/video
-PeerConnection.prototype.answer = function (constraints, cb) {
-    var self = this;
-    var hasConstraints = arguments.length === 2;
-    var callback = hasConstraints ? cb : constraints;
-    var mediaConstraints = hasConstraints ? constraints : {
-            mandatory: {
-                OfferToReceiveAudio: true,
-                OfferToReceiveVideo: true
-            }
-        };
-
-    this._answer(mediaConstraints, callback);
-};
-
-// Process an answer
-PeerConnection.prototype.handleAnswer = function (answer, cb) {
-    cb = cb || function () {};
-    var self = this;
-    if (answer.jingle) {
-        answer.sdp = SJJ.toSessionSDP(answer.jingle, self.config.sdpSessionID);
-        self.remoteDescription = answer.jingle;
-    }
-    self.pc.setRemoteDescription(
-        new webrtc.SessionDescription(answer),
-        function () {
-            cb(null);
-        },
-        cb
-    );
-};
-
-// Close the peer connection
-PeerConnection.prototype.close = function () {
-    this.pc.close();
-    this.emit('close');
-};
-
-// Internal code sharing for various types of answer methods
-PeerConnection.prototype._answer = function (constraints, cb) {
-    cb = cb || function () {};
-    var self = this;
-    if (!this.pc.remoteDescription) {
-        // the old API is used, call handleOffer
-        throw new Error('remoteDescription not set');
-    }
-    self.pc.createAnswer(
-        function (answer) {
-            self.pc.setLocalDescription(answer,
-                function () {
-                    var expandedAnswer = {
-                        type: 'answer',
-                        sdp: answer.sdp
-                    };
-                    if (self.config.useJingle) {
-                        var jingle = SJJ.toSessionJSON(answer.sdp);
-                        jingle.sid = self.config.sid;
-                        self.localDescription = jingle;
-                        expandedAnswer.jingle = jingle;
-                    }
-                    self.emit('answer', expandedAnswer);
-                    cb(null, expandedAnswer);
-                },
-                function (err) {
-                    self.emit('error', err);
-                    cb(err);
-                }
-            );
-        },
-        function (err) {
-            self.emit('error', err);
-            cb(err);
-        },
-        constraints
-    );
-};
-
-// Internal method for emitting ice candidates on our peer object
-PeerConnection.prototype._onIce = function (event) {
-    var self = this;
-    if (event.candidate) {
-        var ice = event.candidate;
-
-        var expandedCandidate = {
-            candidate: event.candidate
-        };
-
-        if (self.config.useJingle) {
-            if (!ice.sdpMid) { // firefox doesn't set this
-                ice.sdpMid = self.localDescription.contents[ice.sdpMLineIndex].name;
-            }
-            if (!self.config.ice[ice.sdpMid]) {
-                var jingle = SJJ.toSessionJSON(self.pc.localDescription.sdp, self.config.isInitiator ? 'initiator' : 'responder');
-                _.each(jingle.contents, function (content) {
-                    var transport = content.transport || {};
-                    if (transport.ufrag) {
-                        self.config.ice[content.name] = {
-                            ufrag: transport.ufrag,
-                            pwd: transport.pwd
-                        };
-                    }
-                });
-            }
-            expandedCandidate.jingle = {
-                contents: [{
-                    name: ice.sdpMid,
-                    creator: self.config.isInitiator ? 'initiator' : 'responder',
-                    transport: {
-                        transType: 'iceUdp',
-                        ufrag: self.config.ice[ice.sdpMid].ufrag,
-                        pwd: self.config.ice[ice.sdpMid].pwd,
-                        candidates: [
-                            SJJ.toCandidateJSON(ice.candidate)
-                        ]
-                    }
-                }]
-            };
-        }
-        if (ice.candidate.indexOf('typ srflx') !== -1) {
-            this.hadLocalStunCandidate = true;
-        }
-        else if (ice.candidate.indexOf('typ relay') !== -1) {
-            this.hadLocalRelayCandidate = true;
-        }
-
-        this.emit('ice', expandedCandidate);
-    } else {
-        this.emit('endOfCandidates');
-    }
-};
-
-// Internal method for processing a new data channel being added by the
-// other peer.
-PeerConnection.prototype._onDataChannel = function (event) {
-    this.emit('addChannel', event.channel);
-};
-
-// Internal handling of adding stream
-PeerConnection.prototype._onAddStream = function (event) {
-    this.remoteStreams.push(event.stream);
-    this.emit('addStream', event);
-};
-
-// Create a data channel spec reference:
-// http://dev.w3.org/2011/webrtc/editor/webrtc.html#idl-def-RTCDataChannelInit
-PeerConnection.prototype.createDataChannel = function (name, opts) {
-    var channel = this.pc.createDataChannel(name, opts);
-    return channel;
-};
-
-// a wrapper around getStats which hides the differences (where possible)
-PeerConnection.prototype.getStats = function (cb) {
-    if (webrtc.prefix === 'moz') {
-        this.pc.getStats(
-            function (res) {
-                var items = [];
-                res.forEach(function (result) {
-                    items.push(result);
-                });
-                cb(null, items);
-            },
-            cb
-        );
-    } else {
-        this.pc.getStats(function (res) {
-            var items = [];
-            res.result().forEach(function (result) {
-                var item = {};
-                result.names().forEach(function (name) {
-                    item[name] = result.stat(name);
-                });
-                item.id = result.id;
-                item.type = result.type;
-                item.timestamp = result.timestamp;
-                items.push(item);
-            });
-            cb(null, items);
-        });
-    }
-};
-
-module.exports = PeerConnection;
-
-},{"sdp-jingle-json":16,"traceablepeerconnection":17,"underscore":15,"util":2,"webrtcsupport":4,"wildemitter":5}],15:[function(require,module,exports){
+},{"getscreenmedia":13,"getusermedia":11,"hark":12,"mediastream-gain":14,"mockconsole":6,"util":2,"webrtcsupport":4,"wildemitter":5}],15:[function(require,module,exports){
 //     Underscore.js 1.6.0
 //     http://underscorejs.org
 //     (c) 2009-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -3283,7 +2853,558 @@ module.exports = PeerConnection;
   }
 }).call(this);
 
-},{}],13:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
+var _ = require('underscore');
+var util = require('util');
+var webrtc = require('webrtcsupport');
+var SJJ = require('sdp-jingle-json');
+var WildEmitter = require('wildemitter');
+var peerconn = require('traceablepeerconnection');
+
+function PeerConnection(config, constraints) {
+    var self = this;
+    var item;
+    WildEmitter.call(this);
+
+    config = config || {};
+    config.iceServers = config.iceServers || [];
+
+    this.pc = new peerconn(config, constraints);
+
+    this.getLocalStreams = this.pc.getLocalStreams.bind(this.pc);
+    this.getRemoteStreams = this.pc.getRemoteStreams.bind(this.pc);
+    this.addStream = this.pc.addStream.bind(this.pc);
+    this.removeStream = this.pc.removeStream.bind(this.pc);
+
+    // proxy events 
+    this.pc.on('*', function () {
+        self.emit.apply(self, arguments);
+    });
+
+    // proxy some events directly
+    this.pc.onremovestream = this.emit.bind(this, 'removeStream');
+    this.pc.onnegotiationneeded = this.emit.bind(this, 'negotiationNeeded');
+    this.pc.oniceconnectionstatechange = this.emit.bind(this, 'iceConnectionStateChange');
+    this.pc.onsignalingstatechange = this.emit.bind(this, 'signalingStateChange');
+
+    // handle incoming ice and data channel events
+    this.pc.onaddstream = this._onAddStream.bind(this);
+    this.pc.onicecandidate = this._onIce.bind(this);
+    this.pc.ondatachannel = this._onDataChannel.bind(this);
+
+    this.localDescription = {
+        contents: []
+    };
+    this.remoteDescription = {
+        contents: []
+    };
+
+    this.localStream = null;
+    this.remoteStreams = [];
+
+    this.config = {
+        debug: false,
+        ice: {},
+        sid: '',
+        isInitiator: true,
+        sdpSessionID: Date.now(),
+        useJingle: false
+    };
+
+    // apply our config
+    for (item in config) {
+        this.config[item] = config[item];
+    }
+
+    if (this.config.debug) {
+        this.on('*', function (eventName, event) {
+            var logger = config.logger || console;
+            logger.log('PeerConnection event:', arguments);
+        });
+    }
+    this.hadLocalStunCandidate = false;
+    this.hadRemoteStunCandidate = false;
+    this.hadLocalRelayCandidate = false;
+    this.hadRemoteRelayCandidate = false;
+
+    // keeping references for all our data channels
+    // so they dont get garbage collected
+    // can be removed once the following bugs have been fixed
+    // https://crbug.com/405545 
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=964092
+    // to be filed for opera
+    this._remoteDataChannels = [];
+    this._localDataChannels = [];
+}
+
+util.inherits(PeerConnection, WildEmitter);
+
+Object.defineProperty(PeerConnection.prototype, 'signalingState', {
+    get: function () {
+        return this.pc.signalingState;
+    }
+});
+Object.defineProperty(PeerConnection.prototype, 'iceConnectionState', {
+    get: function () {
+        return this.pc.iceConnectionState;
+    }
+});
+
+// Add a stream to the peer connection object
+PeerConnection.prototype.addStream = function (stream) {
+    this.localStream = stream;
+    this.pc.addStream(stream);
+};
+
+
+// Init and add ice candidate object with correct constructor
+PeerConnection.prototype.processIce = function (update, cb) {
+    cb = cb || function () {};
+    var self = this;
+
+    if (update.contents) {
+        var contentNames = _.pluck(this.remoteDescription.contents, 'name');
+        var contents = update.contents;
+
+        contents.forEach(function (content) {
+            var transport = content.transport || {};
+            var candidates = transport.candidates || [];
+            var mline = contentNames.indexOf(content.name);
+            var mid = content.name;
+
+            candidates.forEach(function (candidate) {
+                var iceCandidate = SJJ.toCandidateSDP(candidate) + '\r\n';
+                self.pc.addIceCandidate(new webrtc.IceCandidate({
+                    candidate: iceCandidate,
+                    sdpMLineIndex: mline,
+                    sdpMid: mid
+                })
+                /* not yet, breaks Chrome M32 */
+                /*
+                , function () {
+                    // well, this success callback is pretty meaningless
+                },
+                function (err) {
+                    self.emit('error', err);
+                }
+                */
+                );
+                if (candidate.type === 'srflx') {
+                    self.hadRemoteStunCandidate = true;
+                }
+                else if (candidate.type === 'relay') {
+                    self.hadRemoteRelayCandidate = true;
+                }
+            });
+        });
+    } else {
+        // working around https://code.google.com/p/webrtc/issues/detail?id=3669
+        if (update.candidate.candidate.indexOf('a=') !== 0) {
+            update.candidate.candidate = 'a=' + update.candidate.candidate;
+        }
+
+        self.pc.addIceCandidate(new webrtc.IceCandidate(update.candidate));
+        if (update.candidate.candidate.indexOf('typ srflx') !== -1) {
+            self.hadRemoteStunCandidate = true;
+        }
+        else if (update.candidate.candidate.indexOf('typ relay') !== -1) {
+            self.hadRemoteRelayCandidate = true;
+        }
+    }
+    cb();
+};
+
+// Generate and emit an offer with the given constraints
+PeerConnection.prototype.offer = function (constraints, cb) {
+    var self = this;
+    var hasConstraints = arguments.length === 2;
+    var mediaConstraints = hasConstraints ? constraints : {
+            mandatory: {
+                OfferToReceiveAudio: true,
+                OfferToReceiveVideo: true
+            }
+        };
+    cb = hasConstraints ? cb : constraints;
+    cb = cb || function () {};
+
+    // Actually generate the offer
+    this.pc.createOffer(
+        function (offer) {
+            self.pc.setLocalDescription(offer,
+                function () {
+                    var jingle;
+                    var expandedOffer = {
+                        type: 'offer',
+                        sdp: offer.sdp
+                    };
+                    if (self.config.useJingle) {
+                        jingle = SJJ.toSessionJSON(offer.sdp, self.config.isInitiator ? 'initiator' : 'responder');
+                        jingle.sid = self.config.sid;
+                        self.localDescription = jingle;
+
+                        // Save ICE credentials
+                        _.each(jingle.contents, function (content) {
+                            var transport = content.transport || {};
+                            if (transport.ufrag) {
+                                self.config.ice[content.name] = {
+                                    ufrag: transport.ufrag,
+                                    pwd: transport.pwd
+                                };
+                            }
+                        });
+
+                        expandedOffer.jingle = jingle;
+                    }
+
+                    self.emit('offer', expandedOffer);
+                    cb(null, expandedOffer);
+                },
+                function (err) {
+                    self.emit('error', err);
+                    cb(err);
+                }
+            );
+        },
+        function (err) {
+            self.emit('error', err);
+            cb(err);
+        },
+        mediaConstraints
+    );
+};
+
+
+// Process an incoming offer so that ICE may proceed before deciding
+// to answer the request.
+PeerConnection.prototype.handleOffer = function (offer, cb) {
+    cb = cb || function () {};
+    var self = this;
+    offer.type = 'offer';
+    if (offer.jingle) {
+        offer.sdp = SJJ.toSessionSDP(offer.jingle, self.config.sdpSessionID);
+        self.remoteDescription = offer.jingle;
+    }
+    self.pc.setRemoteDescription(new webrtc.SessionDescription(offer), function () {
+        cb();
+    }, cb);
+};
+
+// Answer an offer with audio only
+PeerConnection.prototype.answerAudioOnly = function (cb) {
+    var mediaConstraints = {
+            mandatory: {
+                OfferToReceiveAudio: true,
+                OfferToReceiveVideo: false
+            }
+        };
+    this._answer(mediaConstraints, cb);
+};
+
+// Answer an offer without offering to recieve
+PeerConnection.prototype.answerBroadcastOnly = function (cb) {
+    var mediaConstraints = {
+            mandatory: {
+                OfferToReceiveAudio: false,
+                OfferToReceiveVideo: false
+            }
+        };
+    this._answer(mediaConstraints, cb);
+};
+
+// Answer an offer with given constraints default is audio/video
+PeerConnection.prototype.answer = function (constraints, cb) {
+    var self = this;
+    var hasConstraints = arguments.length === 2;
+    var callback = hasConstraints ? cb : constraints;
+    var mediaConstraints = hasConstraints ? constraints : {
+            mandatory: {
+                OfferToReceiveAudio: true,
+                OfferToReceiveVideo: true
+            }
+        };
+
+    this._answer(mediaConstraints, callback);
+};
+
+// Process an answer
+PeerConnection.prototype.handleAnswer = function (answer, cb) {
+    cb = cb || function () {};
+    var self = this;
+    if (answer.jingle) {
+        answer.sdp = SJJ.toSessionSDP(answer.jingle, self.config.sdpSessionID);
+        self.remoteDescription = answer.jingle;
+    }
+    self.pc.setRemoteDescription(
+        new webrtc.SessionDescription(answer),
+        function () {
+            cb(null);
+        },
+        cb
+    );
+};
+
+// Close the peer connection
+PeerConnection.prototype.close = function () {
+    this.pc.close();
+
+    this._localDataChannels = [];
+    this._remoteDataChannels = [];
+
+    this.emit('close');
+};
+
+// Internal code sharing for various types of answer methods
+PeerConnection.prototype._answer = function (constraints, cb) {
+    cb = cb || function () {};
+    var self = this;
+    if (!this.pc.remoteDescription) {
+        // the old API is used, call handleOffer
+        throw new Error('remoteDescription not set');
+    }
+    self.pc.createAnswer(
+        function (answer) {
+            self.pc.setLocalDescription(answer,
+                function () {
+                    var expandedAnswer = {
+                        type: 'answer',
+                        sdp: answer.sdp
+                    };
+                    if (self.config.useJingle) {
+                        var jingle = SJJ.toSessionJSON(answer.sdp);
+                        jingle.sid = self.config.sid;
+                        self.localDescription = jingle;
+                        expandedAnswer.jingle = jingle;
+                    }
+                    self.emit('answer', expandedAnswer);
+                    cb(null, expandedAnswer);
+                },
+                function (err) {
+                    self.emit('error', err);
+                    cb(err);
+                }
+            );
+        },
+        function (err) {
+            self.emit('error', err);
+            cb(err);
+        },
+        constraints
+    );
+};
+
+// Internal method for emitting ice candidates on our peer object
+PeerConnection.prototype._onIce = function (event) {
+    var self = this;
+    if (event.candidate) {
+        var ice = event.candidate;
+
+        var expandedCandidate = {
+            candidate: event.candidate
+        };
+
+        if (self.config.useJingle) {
+            if (!ice.sdpMid) { // firefox doesn't set this
+                ice.sdpMid = self.localDescription.contents[ice.sdpMLineIndex].name;
+            }
+            if (!self.config.ice[ice.sdpMid]) {
+                var jingle = SJJ.toSessionJSON(self.pc.localDescription.sdp, self.config.isInitiator ? 'initiator' : 'responder');
+                _.each(jingle.contents, function (content) {
+                    var transport = content.transport || {};
+                    if (transport.ufrag) {
+                        self.config.ice[content.name] = {
+                            ufrag: transport.ufrag,
+                            pwd: transport.pwd
+                        };
+                    }
+                });
+            }
+            expandedCandidate.jingle = {
+                contents: [{
+                    name: ice.sdpMid,
+                    creator: self.config.isInitiator ? 'initiator' : 'responder',
+                    transport: {
+                        transType: 'iceUdp',
+                        ufrag: self.config.ice[ice.sdpMid].ufrag,
+                        pwd: self.config.ice[ice.sdpMid].pwd,
+                        candidates: [
+                            SJJ.toCandidateJSON(ice.candidate)
+                        ]
+                    }
+                }]
+            };
+        }
+        if (ice.candidate.indexOf('typ srflx') !== -1) {
+            this.hadLocalStunCandidate = true;
+        }
+        else if (ice.candidate.indexOf('typ relay') !== -1) {
+            this.hadLocalRelayCandidate = true;
+        }
+
+        this.emit('ice', expandedCandidate);
+    } else {
+        this.emit('endOfCandidates');
+    }
+};
+
+// Internal method for processing a new data channel being added by the
+// other peer.
+PeerConnection.prototype._onDataChannel = function (event) {
+    // make sure we keep a reference so this doesn't get garbage collected
+    var channel = event.channel;
+    this._remoteDataChannels.push(channel);
+
+    this.emit('addChannel', channel);
+};
+
+// Internal handling of adding stream
+PeerConnection.prototype._onAddStream = function (event) {
+    this.remoteStreams.push(event.stream);
+    this.emit('addStream', event);
+};
+
+// Create a data channel spec reference:
+// http://dev.w3.org/2011/webrtc/editor/webrtc.html#idl-def-RTCDataChannelInit
+PeerConnection.prototype.createDataChannel = function (name, opts) {
+    var channel = this.pc.createDataChannel(name, opts);
+
+    // make sure we keep a reference so this doesn't get garbage collected
+    this._localDataChannels.push(channel);
+
+    return channel;
+};
+
+// a wrapper around getStats which hides the differences (where possible)
+PeerConnection.prototype.getStats = function (cb) {
+    if (webrtc.prefix === 'moz') {
+        this.pc.getStats(
+            function (res) {
+                var items = [];
+                res.forEach(function (result) {
+                    items.push(result);
+                });
+                cb(null, items);
+            },
+            cb
+        );
+    } else {
+        this.pc.getStats(function (res) {
+            var items = [];
+            res.result().forEach(function (result) {
+                var item = {};
+                result.names().forEach(function (name) {
+                    item[name] = result.stat(name);
+                });
+                item.id = result.id;
+                item.type = result.type;
+                item.timestamp = result.timestamp;
+                items.push(item);
+            });
+            cb(null, items);
+        });
+    }
+};
+
+module.exports = PeerConnection;
+
+},{"sdp-jingle-json":16,"traceablepeerconnection":17,"underscore":15,"util":2,"webrtcsupport":4,"wildemitter":5}],14:[function(require,module,exports){
+var support = require('webrtcsupport');
+
+
+function GainController(stream) {
+    this.support = support.webAudio && support.mediaStream;
+
+    // set our starting value
+    this.gain = 1;
+
+    if (this.support) {
+        var context = this.context = new support.AudioContext();
+        this.microphone = context.createMediaStreamSource(stream);
+        this.gainFilter = context.createGain();
+        this.destination = context.createMediaStreamDestination();
+        this.outputStream = this.destination.stream;
+        this.microphone.connect(this.gainFilter);
+        this.gainFilter.connect(this.destination);
+        stream.addTrack(this.outputStream.getAudioTracks()[0]);
+        stream.removeTrack(stream.getAudioTracks()[0]);
+    }
+    this.stream = stream;
+}
+
+// setting
+GainController.prototype.setGain = function (val) {
+    // check for support
+    if (!this.support) return;
+    this.gainFilter.gain.value = val;
+    this.gain = val;
+};
+
+GainController.prototype.getGain = function () {
+    return this.gain;
+};
+
+GainController.prototype.off = function () {
+    return this.setGain(0);
+};
+
+GainController.prototype.on = function () {
+    this.setGain(1);
+};
+
+
+module.exports = GainController;
+
+},{"webrtcsupport":18}],18:[function(require,module,exports){
+// created by @HenrikJoreteg
+var prefix;
+var isChrome = false;
+var isFirefox = false;
+var ua = window.navigator.userAgent.toLowerCase();
+
+// basic sniffing
+if (ua.indexOf('firefox') !== -1) {
+    prefix = 'moz';
+    isFirefox = true;
+} else if (ua.indexOf('chrome') !== -1) {
+    prefix = 'webkit';
+    isChrome = true;
+}
+
+var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
+var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
+var MediaStream = window.webkitMediaStream || window.MediaStream;
+var screenSharing = window.location.protocol === 'https:' && window.navigator.userAgent.match('Chrome') && parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
+var AudioContext = window.webkitAudioContext || window.AudioContext;
+
+
+// export support flags and constructors.prototype && PC
+module.exports = {
+    support: !!PC,
+    dataChannel: isChrome || isFirefox || (PC && PC.prototype && PC.prototype.createDataChannel),
+    prefix: prefix,
+    webAudio: !!(AudioContext && AudioContext.prototype.createMediaStreamSource),
+    mediaStream: !!(MediaStream && MediaStream.prototype.removeTrack),
+    screenSharing: !!screenSharing,
+    AudioContext: AudioContext,
+    PeerConnection: PC,
+    SessionDescription: SessionDescription,
+    IceCandidate: IceCandidate
+};
+
+},{}],16:[function(require,module,exports){
+var tosdp = require('./lib/tosdp');
+var tojson = require('./lib/tojson');
+
+
+exports.toSessionSDP = tosdp.toSessionSDP;
+exports.toMediaSDP = tosdp.toMediaSDP;
+exports.toCandidateSDP = tosdp.toCandidateSDP;
+
+exports.toSessionJSON = tojson.toSessionJSON;
+exports.toMediaJSON = tojson.toMediaJSON;
+exports.toCandidateJSON = tojson.toCandidateJSON;
+
+},{"./lib/tojson":19,"./lib/tosdp":20}],13:[function(require,module,exports){
 // getScreenMedia helper by @HenrikJoreteg
 var getUserMedia = require('getusermedia');
 
@@ -3308,6 +3429,7 @@ module.exports = function (constraints, cb) {
         if (window.navigator.userAgent.match('Linux')) maxver = 35;
         if (chromever >= 26 && chromever <= maxver) {
             // chrome 26 - chrome 33 way to do it -- requires bad chrome://flags
+            // note: this is basically in maintenance mode and will go away soon
             constraints = (hasConstraints && constraints) || { 
                 video: {
                     mandatory: {
@@ -3330,6 +3452,36 @@ module.exports = function (constraints, cb) {
             cache[pending] = [callback, hasConstraints ? constraint : null];
             window.postMessage({ type: 'getScreen', id: pending }, '*');
         }
+    } else if (window.navigator.userAgent.match('Firefox')) {
+        var ffver = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+        if (ffver >= 33) {
+            constraints = (hasConstraints && constraints) || {
+                video: {
+                    mozMediaSource: 'window',
+                    mediaSource: 'window'
+                }
+            }
+            getUserMedia(constraints, function (err, stream) {
+                callback(err, stream);
+                // workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=1045810
+                if (!err) {
+                    var lastTime = stream.currentTime;
+                    var polly = window.setInterval(function () {
+                        if (!stream) window.clearInterval(polly);
+                        if (stream.currentTime == lastTime) {
+                            window.clearInterval(polly);
+                            if (stream.onended) {
+                                stream.onended();
+                            }
+                        }
+                        lastTime = stream.currentTime;
+                    }, 500);
+                }
+            });
+        } else {
+            error = new Error('NavigatorUserMediaError');
+            error.name = 'EXTENSION_UNAVAILABLE'; // does not make much sense but...
+        }
     }
 };
 
@@ -3344,18 +3496,23 @@ window.addEventListener('message', function (event) {
         delete cache[event.data.id];
 
         if (event.data.sourceId === '') { // user canceled
-            var error = error = new Error('NavigatorUserMediaError');
+            var error = new Error('NavigatorUserMediaError');
             error.name = 'PERMISSION_DENIED';
             callback(error);
         } else {
-            constraints = constraints || {audio: false, video: {mandatory: {
-                chromeMediaSource: 'desktop', 
-                chromeMediaSourceId: event.data.sourceId,
-                googLeakyBucket: true,
-                maxWidth: window.screen.width,
-                maxHeight: window.screen.height,
-                maxFrameRate: 3
-            }}};
+            constraints = constraints || {audio: false, video: {
+                mandatory: {
+                    chromeMediaSource: 'desktop',
+                    maxWidth: window.screen.width,
+                    maxHeight: window.screen.height,
+                    maxFrameRate: 3
+                },
+                optional: [
+                    {googLeakyBucket: true},
+                    {googTemporalLayeredScreencast: true}
+                ]
+            }};
+            constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
             getUserMedia(constraints, callback);
         }
     } else if (event.data.type == 'getScreenPending') {
@@ -3363,20 +3520,7 @@ window.addEventListener('message', function (event) {
     }
 });
 
-},{"getusermedia":11}],16:[function(require,module,exports){
-var tosdp = require('./lib/tosdp');
-var tojson = require('./lib/tojson');
-
-
-exports.toSessionSDP = tosdp.toSessionSDP;
-exports.toMediaSDP = tosdp.toMediaSDP;
-exports.toCandidateSDP = tosdp.toCandidateSDP;
-
-exports.toSessionJSON = tojson.toSessionJSON;
-exports.toMediaJSON = tojson.toMediaJSON;
-exports.toCandidateJSON = tojson.toCandidateJSON;
-
-},{"./lib/tojson":19,"./lib/tosdp":18}],18:[function(require,module,exports){
+},{"getusermedia":11}],20:[function(require,module,exports){
 var senders = {
     'initiator': 'sendonly',
     'responder': 'recvonly',
@@ -3569,6 +3713,10 @@ exports.toCandidateSDP = function (candidate) {
             sdp.push(candidate.relPort);
         }
     }
+    if (candidate.tcpType) {
+        sdp.push('tcptype');
+        sdp.push(candidate.tcpType);
+    }
 
     sdp.push('generation');
     sdp.push(candidate.generation || '0');
@@ -3711,54 +3859,45 @@ module.exports = function(stream, options) {
   return harker;
 }
 
-},{"wildemitter":5}],14:[function(require,module,exports){
-var support = require('webrtcsupport');
+},{"wildemitter":5}],21:[function(require,module,exports){
+// created by @HenrikJoreteg
+var prefix;
+var isChrome = false;
+var isFirefox = false;
+var ua = window.navigator.userAgent.toLowerCase();
 
-
-function GainController(stream) {
-    this.support = support.webAudio && support.mediaStream;
-
-    // set our starting value
-    this.gain = 1;
-
-    if (this.support) {
-        var context = this.context = new support.AudioContext();
-        this.microphone = context.createMediaStreamSource(stream);
-        this.gainFilter = context.createGain();
-        this.destination = context.createMediaStreamDestination();
-        this.outputStream = this.destination.stream;
-        this.microphone.connect(this.gainFilter);
-        this.gainFilter.connect(this.destination);
-        stream.addTrack(this.outputStream.getAudioTracks()[0]);
-        stream.removeTrack(stream.getAudioTracks()[0]);
-    }
-    this.stream = stream;
+// basic sniffing
+if (ua.indexOf('firefox') !== -1) {
+    prefix = 'moz';
+    isFirefox = true;
+} else if (ua.indexOf('chrome') !== -1) {
+    prefix = 'webkit';
+    isChrome = true;
 }
 
-// setting
-GainController.prototype.setGain = function (val) {
-    // check for support
-    if (!this.support) return;
-    this.gainFilter.gain.value = val;
-    this.gain = val;
+var PC = window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+var IceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
+var SessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
+var MediaStream = window.webkitMediaStream || window.MediaStream;
+var screenSharing = window.location.protocol === 'https:' && window.navigator.userAgent.match('Chrome') && parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10) >= 26;
+var AudioContext = window.webkitAudioContext || window.AudioContext;
+
+
+// export support flags and constructors.prototype && PC
+module.exports = {
+    support: !!PC,
+    dataChannel: isChrome || isFirefox || (PC && PC.prototype && PC.prototype.createDataChannel),
+    prefix: prefix,
+    webAudio: !!(AudioContext && AudioContext.prototype.createMediaStreamSource),
+    mediaStream: !!(MediaStream && MediaStream.prototype.removeTrack),
+    screenSharing: !!screenSharing,
+    AudioContext: AudioContext,
+    PeerConnection: PC,
+    SessionDescription: SessionDescription,
+    IceCandidate: IceCandidate
 };
 
-GainController.prototype.getGain = function () {
-    return this.gain;
-};
-
-GainController.prototype.off = function () {
-    return this.setGain(0);
-};
-
-GainController.prototype.on = function () {
-    this.setGain(1);
-};
-
-
-module.exports = GainController;
-
-},{"webrtcsupport":4}],19:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 var parsers = require('./parsers');
 var idCounter = Math.random();
 
@@ -3943,7 +4082,260 @@ exports.toCandidateJSON = function (line) {
     return candidate;
 };
 
-},{"./parsers":20}],17:[function(require,module,exports){
+},{"./parsers":22}],22:[function(require,module,exports){
+exports.lines = function (sdp) {
+    return sdp.split('\r\n').filter(function (line) {
+        return line.length > 0;
+    });
+};
+
+exports.findLine = function (prefix, mediaLines, sessionLines) {
+    var prefixLength = prefix.length;
+    for (var i = 0; i < mediaLines.length; i++) {
+        if (mediaLines[i].substr(0, prefixLength) === prefix) {
+            return mediaLines[i];
+        }
+    }
+    // Continue searching in parent session section
+    if (!sessionLines) {
+        return false;
+    }
+
+    for (var j = 0; j < sessionLines.length; j++) {
+        if (sessionLines[j].substr(0, prefixLength) === prefix) {
+            return sessionLines[j];
+        }
+    }
+
+    return false;
+};
+
+exports.findLines = function (prefix, mediaLines, sessionLines) {
+    var results = [];
+    var prefixLength = prefix.length;
+    for (var i = 0; i < mediaLines.length; i++) {
+        if (mediaLines[i].substr(0, prefixLength) === prefix) {
+            results.push(mediaLines[i]);
+        }
+    }
+    if (results.length || !sessionLines) {
+        return results;
+    }
+    for (var j = 0; j < sessionLines.length; j++) {
+        if (sessionLines[j].substr(0, prefixLength) === prefix) {
+            results.push(sessionLines[j]);
+        }
+    }
+    return results;
+};
+
+exports.mline = function (line) {
+    var parts = line.substr(2).split(' ');
+    var parsed = {
+        media: parts[0],
+        port: parts[1],
+        proto: parts[2],
+        formats: []
+    };
+    for (var i = 3; i < parts.length; i++) {
+        if (parts[i]) {
+            parsed.formats.push(parts[i]);
+        }
+    }
+    return parsed;
+};
+
+exports.rtpmap = function (line) {
+    var parts = line.substr(9).split(' ');
+    var parsed = {
+        id: parts.shift()
+    };
+
+    parts = parts[0].split('/');
+
+    parsed.name = parts[0];
+    parsed.clockrate = parts[1];
+    parsed.channels = parts.length == 3 ? parts[2] : '1';
+    return parsed;
+};
+
+exports.sctpmap = function (line) {
+    // based on -05 draft
+    var parts = line.substr(10).split(' ');
+    var parsed = {
+        number: parts.shift(),
+        protocol: parts.shift(),
+        streams: parts.shift()
+    };
+    return parsed;
+};
+
+
+exports.fmtp = function (line) {
+    var kv, key, value;
+    var parts = line.substr(line.indexOf(' ') + 1).split(';');
+    var parsed = [];
+    for (var i = 0; i < parts.length; i++) {
+        kv = parts[i].split('=');
+        key = kv[0].trim();
+        value = kv[1];
+        if (key && value) {
+            parsed.push({key: key, value: value});
+        } else if (key) {
+            parsed.push({key: '', value: key});
+        }
+    }
+    return parsed;
+};
+
+exports.crypto = function (line) {
+    var parts = line.substr(9).split(' ');
+    var parsed = {
+        tag: parts[0],
+        cipherSuite: parts[1],
+        keyParams: parts[2],
+        sessionParams: parts.slice(3).join(' ')
+    };
+    return parsed;
+};
+
+exports.fingerprint = function (line) {
+    var parts = line.substr(14).split(' ');
+    return {
+        hash: parts[0],
+        value: parts[1]
+    };
+};
+
+exports.extmap = function (line) {
+    var parts = line.substr(9).split(' ');
+    var parsed = {};
+
+    var idpart = parts.shift();
+    var sp = idpart.indexOf('/');
+    if (sp >= 0) {
+        parsed.id = idpart.substr(0, sp);
+        parsed.senders = idpart.substr(sp + 1);
+    } else {
+        parsed.id = idpart;
+        parsed.senders = 'sendrecv';
+    }
+
+    parsed.uri = parts.shift() || '';
+
+    return parsed;
+};
+
+exports.rtcpfb = function (line) {
+    var parts = line.substr(10).split(' ');
+    var parsed = {};
+    parsed.id = parts.shift();
+    parsed.type = parts.shift();
+    if (parsed.type === 'trr-int') {
+        parsed.value = parts.shift();
+    } else {
+        parsed.subtype = parts.shift() || '';
+    }
+    parsed.parameters = parts;
+    return parsed;
+};
+
+exports.candidate = function (line) {
+    var parts;
+    if (line.indexOf('a=candidate:') === 0) {
+        parts = line.substring(12).split(' ');
+    } else { // no a=candidate
+        parts = line.substring(10).split(' ');
+    }
+
+    var candidate = {
+        foundation: parts[0],
+        component: parts[1],
+        protocol: parts[2].toLowerCase(),
+        priority: parts[3],
+        ip: parts[4],
+        port: parts[5],
+        // skip parts[6] == 'typ'
+        type: parts[7],
+        generation: '0'
+    };
+
+    for (var i = 8; i < parts.length; i += 2) {
+        if (parts[i] === 'raddr') {
+            candidate.relAddr = parts[i + 1];
+        } else if (parts[i] === 'rport') {
+            candidate.relPort = parts[i + 1];
+        } else if (parts[i] === 'generation') {
+            candidate.generation = parts[i + 1];
+        } else if (parts[i] === 'tcptype') {
+            candidate.tcpType = parts[i + 1];
+        }
+    }
+
+    candidate.network = '1';
+
+    return candidate;
+};
+
+exports.sourceGroups = function (lines) {
+    var parsed = [];
+    for (var i = 0; i < lines.length; i++) {
+        var parts = lines[i].substr(13).split(' ');
+        parsed.push({
+            semantics: parts.shift(),
+            sources: parts
+        });
+    }
+    return parsed;
+};
+
+exports.sources = function (lines) {
+    // http://tools.ietf.org/html/rfc5576
+    var parsed = [];
+    var sources = {};
+    for (var i = 0; i < lines.length; i++) {
+        var parts = lines[i].substr(7).split(' ');
+        var ssrc = parts.shift();
+
+        if (!sources[ssrc]) {
+            var source = {
+                ssrc: ssrc,
+                parameters: []
+            };
+            parsed.push(source);
+
+            // Keep an index
+            sources[ssrc] = source;
+        }
+
+        parts = parts.join(' ').split(':');
+        var attribute = parts.shift();
+        var value = parts.join(':') || null;
+
+        sources[ssrc].parameters.push({
+            key: attribute,
+            value: value
+        });
+    }
+
+    return parsed;
+};
+
+exports.groups = function (lines) {
+    // http://tools.ietf.org/html/rfc5888
+    var parsed = [];
+    var parts;
+    for (var i = 0; i < lines.length; i++) {
+        parts = lines[i].substr(8).split(' ');
+        parsed.push({
+            semantics: parts.shift(),
+            contents: parts
+        });
+    }
+    return parsed;
+};
+
+},{}],17:[function(require,module,exports){
 // based on https://github.com/ESTOS/strophe.jingle/
 // adds wildemitter support
 var util = require('util');
@@ -4163,257 +4555,6 @@ TraceablePeerConnection.prototype.getStats = function (callback, errback) {
 
 module.exports = TraceablePeerConnection;
 
-},{"util":2,"webrtcsupport":4,"wildemitter":5}],20:[function(require,module,exports){
-exports.lines = function (sdp) {
-    return sdp.split('\r\n').filter(function (line) {
-        return line.length > 0;
-    });
-};
-
-exports.findLine = function (prefix, mediaLines, sessionLines) {
-    var prefixLength = prefix.length;
-    for (var i = 0; i < mediaLines.length; i++) {
-        if (mediaLines[i].substr(0, prefixLength) === prefix) {
-            return mediaLines[i];
-        }
-    }
-    // Continue searching in parent session section
-    if (!sessionLines) {
-        return false;
-    }
-
-    for (var j = 0; j < sessionLines.length; j++) {
-        if (sessionLines[j].substr(0, prefixLength) === prefix) {
-            return sessionLines[j];
-        }
-    }
-
-    return false;
-};
-
-exports.findLines = function (prefix, mediaLines, sessionLines) {
-    var results = [];
-    var prefixLength = prefix.length;
-    for (var i = 0; i < mediaLines.length; i++) {
-        if (mediaLines[i].substr(0, prefixLength) === prefix) {
-            results.push(mediaLines[i]);
-        }
-    }
-    if (results.length || !sessionLines) {
-        return results;
-    }
-    for (var j = 0; j < sessionLines.length; j++) {
-        if (sessionLines[j].substr(0, prefixLength) === prefix) {
-            results.push(sessionLines[j]);
-        }
-    }
-    return results;
-};
-
-exports.mline = function (line) {
-    var parts = line.substr(2).split(' ');
-    var parsed = {
-        media: parts[0],
-        port: parts[1],
-        proto: parts[2],
-        formats: []
-    };
-    for (var i = 3; i < parts.length; i++) {
-        if (parts[i]) {
-            parsed.formats.push(parts[i]);
-        }
-    }
-    return parsed;
-};
-
-exports.rtpmap = function (line) {
-    var parts = line.substr(9).split(' ');
-    var parsed = {
-        id: parts.shift()
-    };
-
-    parts = parts[0].split('/');
-
-    parsed.name = parts[0];
-    parsed.clockrate = parts[1];
-    parsed.channels = parts.length == 3 ? parts[2] : '1';
-    return parsed;
-};
-
-exports.sctpmap = function (line) {
-    // based on -05 draft
-    var parts = line.substr(10).split(' ');
-    var parsed = {
-        number: parts.shift(),
-        protocol: parts.shift(),
-        streams: parts.shift()
-    };
-    return parsed;
-};
-
-
-exports.fmtp = function (line) {
-    var kv, key, value;
-    var parts = line.substr(line.indexOf(' ') + 1).split(';');
-    var parsed = [];
-    for (var i = 0; i < parts.length; i++) {
-        kv = parts[i].split('=');
-        key = kv[0].trim();
-        value = kv[1];
-        if (key && value) {
-            parsed.push({key: key, value: value});
-        } else if (key) {
-            parsed.push({key: '', value: key});
-        }
-    }
-    return parsed;
-};
-
-exports.crypto = function (line) {
-    var parts = line.substr(9).split(' ');
-    var parsed = {
-        tag: parts[0],
-        cipherSuite: parts[1],
-        keyParams: parts[2],
-        sessionParams: parts.slice(3).join(' ')
-    };
-    return parsed;
-};
-
-exports.fingerprint = function (line) {
-    var parts = line.substr(14).split(' ');
-    return {
-        hash: parts[0],
-        value: parts[1]
-    };
-};
-
-exports.extmap = function (line) {
-    var parts = line.substr(9).split(' ');
-    var parsed = {};
-
-    var idpart = parts.shift();
-    var sp = idpart.indexOf('/');
-    if (sp >= 0) {
-        parsed.id = idpart.substr(0, sp);
-        parsed.senders = idpart.substr(sp + 1);
-    } else {
-        parsed.id = idpart;
-        parsed.senders = 'sendrecv';
-    }
-
-    parsed.uri = parts.shift() || '';
-
-    return parsed;
-};
-
-exports.rtcpfb = function (line) {
-    var parts = line.substr(10).split(' ');
-    var parsed = {};
-    parsed.id = parts.shift();
-    parsed.type = parts.shift();
-    if (parsed.type === 'trr-int') {
-        parsed.value = parts.shift();
-    } else {
-        parsed.subtype = parts.shift() || '';
-    }
-    parsed.parameters = parts;
-    return parsed;
-};
-
-exports.candidate = function (line) {
-    var parts;
-    if (line.indexOf('a=candidate:') === 0) {
-        parts = line.substring(12).split(' ');
-    } else { // no a=candidate
-        parts = line.substring(10).split(' ');
-    }
-
-    var candidate = {
-        foundation: parts[0],
-        component: parts[1],
-        protocol: parts[2].toLowerCase(),
-        priority: parts[3],
-        ip: parts[4],
-        port: parts[5],
-        // skip parts[6] == 'typ'
-        type: parts[7],
-        generation: '0'
-    };
-
-    for (var i = 8; i < parts.length; i += 2) {
-        if (parts[i] === 'raddr') {
-            candidate.relAddr = parts[i + 1];
-        } else if (parts[i] === 'rport') {
-            candidate.relPort = parts[i + 1];
-        } else if (parts[i] === 'generation') {
-            candidate.generation = parts[i + 1];
-        }
-    }
-
-    candidate.network = '1';
-
-    return candidate;
-};
-
-exports.sourceGroups = function (lines) {
-    var parsed = [];
-    for (var i = 0; i < lines.length; i++) {
-        var parts = lines[i].substr(13).split(' ');
-        parsed.push({
-            semantics: parts.shift(),
-            sources: parts
-        });
-    }
-    return parsed;
-};
-
-exports.sources = function (lines) {
-    // http://tools.ietf.org/html/rfc5576
-    var parsed = [];
-    var sources = {};
-    for (var i = 0; i < lines.length; i++) {
-        var parts = lines[i].substr(7).split(' ');
-        var ssrc = parts.shift();
-
-        if (!sources[ssrc]) {
-            var source = {
-                ssrc: ssrc,
-                parameters: []
-            };
-            parsed.push(source);
-
-            // Keep an index
-            sources[ssrc] = source;
-        }
-
-        parts = parts.join(' ').split(':');
-        var attribute = parts.shift();
-        var value = parts.join(':') || null;
-
-        sources[ssrc].parameters.push({
-            key: attribute,
-            value: value
-        });
-    }
-
-    return parsed;
-};
-
-exports.groups = function (lines) {
-    // http://tools.ietf.org/html/rfc5888
-    var parsed = [];
-    var parts;
-    for (var i = 0; i < lines.length; i++) {
-        parts = lines[i].substr(8).split(' ');
-        parsed.push({
-            semantics: parts.shift(),
-            contents: parts
-        });
-    }
-    return parsed;
-};
-
-},{}]},{},[1])(1)
+},{"util":2,"webrtcsupport":21,"wildemitter":5}]},{},[1])(1)
 });
 ;
