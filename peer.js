@@ -76,6 +76,8 @@ Peer.prototype.handleMessage = function (message) {
     if (message.prefix) this.browserPrefix = message.prefix;
 
     if (message.type === 'offer') {
+        // workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=1064247
+        message.payload.sdp = message.payload.sdp.replace('a=fmtp:0 profile-level-id=0x42e00c;packetization-mode=1\r\n', '');
         this.pc.handleOffer(message.payload, function (err) {
             if (err) {
                 return;
