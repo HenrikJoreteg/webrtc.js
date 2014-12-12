@@ -17,6 +17,7 @@ function Peer(options) {
     this.enableDataChannels = options.enableDataChannels === undefined ? this.parent.config.enableDataChannels : options.enableDataChannels;
     this.receiveMedia = options.receiveMedia || this.parent.config.receiveMedia;
     this.channels = {};
+    this.sid = options.sid || Date.now().toString();
     // Create an RTCPeerConnection via the polyfill
     this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionConstraints);
     this.pc.on('ice', this.onIceCandidate.bind(this));
@@ -104,6 +105,7 @@ Peer.prototype.handleMessage = function (message) {
 Peer.prototype.send = function (messageType, payload) {
     var message = {
         to: this.id,
+        sid: this.sid,
         broadcaster: this.broadcaster,
         roomType: this.type,
         type: messageType,
