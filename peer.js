@@ -21,6 +21,12 @@ function Peer(options) {
     // Create an RTCPeerConnection via the polyfill
     this.pc = new PeerConnection(this.parent.config.peerConnectionConfig, this.parent.config.peerConnectionConstraints);
     this.pc.on('ice', this.onIceCandidate.bind(this));
+    this.pc.on('offer', function (offer) {
+        self.send('offer', offer);
+    });
+    this.pc.on('answer', function (offer) {
+        self.send('answer', offer);
+    });
     this.pc.on('addStream', this.handleRemoteStreamAdded.bind(this));
     this.pc.on('addChannel', this.handleDataChannelAdded.bind(this));
     this.pc.on('removeStream', this.handleStreamRemoved.bind(this));
@@ -85,7 +91,7 @@ Peer.prototype.handleMessage = function (message) {
             }
             // auto-accept
             self.pc.answer(self.receiveMedia, function (err, sessionDescription) {
-                self.send('answer', sessionDescription);
+                //self.send('answer', sessionDescription);
             });
         });
     } else if (message.type === 'answer') {
@@ -174,8 +180,14 @@ Peer.prototype.start = function () {
     }
 
     this.pc.offer(this.receiveMedia, function (err, sessionDescription) {
-        self.send('offer', sessionDescription);
+        //self.send('offer', sessionDescription);
     });
+};
+
+Peer.prototype.icerestart = function () {
+    var constraints = this.receiveMedia;
+    constraints.mandatory.IceRestart = true;
+    this.pc.offer(constraints, function (err, success) { });
 };
 
 Peer.prototype.end = function () {
