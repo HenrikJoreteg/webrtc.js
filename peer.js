@@ -149,7 +149,7 @@ Peer.prototype._observeDataChannel = function (channel) {
 
 // Fetch or create a data channel by the given name
 Peer.prototype.getDataChannel = function (name, opts) {
-    if (!webrtc.dataChannel) return this.emit('error', new Error('createDataChannel not supported'));
+    if (!webrtc.supportDataChannel) return this.emit('error', new Error('createDataChannel not supported'));
     var channel = this.channels[name];
     opts || (opts = {});
     if (channel) return channel;
