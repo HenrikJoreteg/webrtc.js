@@ -12,11 +12,12 @@
   "main": "./webrtc.js",
   "description": "WebRTC abstraction for making it simple to manage multiple peer connections of various types.",
   "dependencies": {
-    "webrtcsupport": "^1.2.4",
-    "wildemitter": "1.x",
-    "rtcpeerconnection": "^2.4.4",
+    "filetransfer": "^2.0.0",
     "localmedia": "^1.0.2",
-    "mockconsole": "0.0.1"
+    "mockconsole": "0.0.1",
+    "rtcpeerconnection": "^2.4.4",
+    "webrtcsupport": "^1.2.4",
+    "wildemitter": "1.x"
   },
   "devDependencies": {
     "precommit-hook": "0.3.8",

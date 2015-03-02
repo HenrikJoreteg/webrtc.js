@@ -81,8 +81,8 @@ function Peer(options) {
                 receiver.on('receivedFile', function (file, metadata) {
                     receiver.channel.close();
                 });
-            }
-        };
+            };
+        }
     });
 
     // proxy events to parent
