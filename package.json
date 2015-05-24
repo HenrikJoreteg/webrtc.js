@@ -19,6 +19,7 @@
     "webrtcsupport": "^1.2.4",
     "wildemitter": "1.x"
   },
+  "license": "MIT",
   "devDependencies": {
     "precommit-hook": "0.3.8",
     "browserify": "2.22.0",
